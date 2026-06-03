@@ -35,40 +35,79 @@ jobs:
     - name: Configure NDK environment and gradle
       run: |
         echo "NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> $GITHUB_ENV
-        sed -i '10i\
-        \
-            ndkVersion = "28.2.13676358"' ${{ github.workspace }}/V2rayNG/app/build.gradle.kts
+        GRADLE_PATH=$(find . -name "build.gradle.kts" | grep "V2rayNG/app" | head -n 1)
+        if [ ! -z "$GRADLE_PATH" ]; then
+          echo "Found gradle path at: $GRADLE_PATH"
+          sed -i '10i\
+          \
+              ndkVersion = "28.2.13676358"' "$GRADLE_PATH"
+        else
+          echo "Warning: build.gradle.kts not found!"
+        fi
 
     - name: Restore cached libtun2socks
       id: cache-libtun2socks-restore
       uses: actions/cache/restore@v4
       with:
-        path: ${{ github.workspace }}/libs
-        key: libtun2socks-${{ runner.os }}-${{ env.NDK_HOME }}-${{ hashFiles('.git/modules/hev-socks5-tunnel/HEAD') }}-${{ hashFiles('.git/modules/badvpn/HEAD') }}-${{ hashFiles('.git/modules/libancillary/HEAD') }}-${{ hashFiles('compile-tun2socks.sh') }}--${{ hashFiles('compile-hevtun.sh') }}
+        path: |
+          libs
+          imported/libs
+        key: libtun2socks-${{ runner.os }}-${{ env.NDK_HOME }}-${{ hashFiles('**/compile-tun2socks.sh') }}
+        restore-keys: |
+          libtun2socks-${{ runner.os }}-${{ env.NDK_HOME }}-
 
     - name: Build libtun2socks
       if: steps.cache-libtun2socks-restore.outputs.cache-hit != 'true'
       run: |
-        bash compile-tun2socks.sh && bash compile-hevtun.sh
+        SCRIPT_PATH=$(find . -name "compile-tun2socks.sh" | head -n 1)
+        if [ ! -z "$SCRIPT_PATH" ]; then
+          SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
+          echo "Running tun2socks compilations inside $SCRIPT_DIR"
+          pushd "$SCRIPT_DIR"
+          chmod +x compile-tun2socks.sh compile-hevtun.sh
+          sed -i 's/\r$//' compile-tun2socks.sh
+          sed -i 's/\r$//' compile-hevtun.sh
+          ./compile-tun2socks.sh && ./compile-hevtun.sh
+          popd
+        else
+          echo "Error: compile-tun2socks.sh not found!"
+          exit 1
+        fi
     
     - name: Save libtun2socks
       if: steps.cache-libtun2socks-restore.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
-        path: ${{ github.workspace }}/libs
-        key: libtun2socks-${{ runner.os }}-${{ env.NDK_HOME }}-${{ hashFiles('.git/modules/hev-socks5-tunnel/HEAD') }}-${{ hashFiles('.git/modules/badvpn/HEAD') }}-${{ hashFiles('.git/modules/libancillary/HEAD') }}-${{ hashFiles('compile-tun2socks.sh') }}--${{ hashFiles('compile-hevtun.sh') }}
+        path: |
+          libs
+          imported/libs
+        key: libtun2socks-${{ runner.os }}-${{ env.NDK_HOME }}-${{ hashFiles('**/compile-tun2socks.sh') }}
 
     - name: Copy libtun2socks
       run: |
-        cp -r ${{ github.workspace }}/libs ${{ github.workspace }}/V2rayNG/app
+        LIBS_SOURCE=$(find . -maxdepth 3 -type d -name "libs" | grep -v "V2rayNG" | grep -v "hysteria" | head -n 1)
+        V2RAY_APP=$(find . -type d -name "app" | grep "V2rayNG" | head -n 1)
+        if [ ! -z "$LIBS_SOURCE" ] && [ ! -z "$V2RAY_APP" ]; then
+          echo "Copying from $LIBS_SOURCE to $V2RAY_APP"
+          cp -r "$LIBS_SOURCE" "$V2RAY_APP/"
+        else
+          echo "Error: libs or V2rayNG/app not found!"
+          exit 1
+        fi
 
     - name: Fetch AndroidLibXrayLite tag
       run: |
-        pushd AndroidLibXrayLite
-        CURRENT_TAG=$(git describe --tags --abbrev=0)
-        echo "Current tag in this repo: $CURRENT_TAG"
-        echo "CURRENT_TAG=$CURRENT_TAG" >> $GITHUB_ENV
-        popd
+        XRAY_DIR=$(find . -type d -name "AndroidLibXrayLite" | head -n 1)
+        if [ ! -z "$XRAY_DIR" ]; then
+          pushd "$XRAY_DIR"
+          CURRENT_TAG=$(git describe --tags --abbrev=0)
+          echo "Current tag in this repo: $CURRENT_TAG"
+          echo "CURRENT_TAG=$CURRENT_TAG" >> $GITHUB_ENV
+          popd
+        else
+          echo "Error: AndroidLibXrayLite not found!"
+          exit 1
+        fi
 
     - name: Download libv2ray
       uses: robinraju/release-downloader@v1.12
@@ -76,37 +115,74 @@ jobs:
         repository: '2dust/AndroidLibXrayLite'
         tag: ${{ env.CURRENT_TAG }}
         fileName: 'libv2ray.aar'
-        out-file-path: V2rayNG/app/libs/
+        out-file-path: 'download_temp'
+
+    - name: Place downloaded libv2ray
+      run: |
+        V2RAY_LIBS=$(find . -type d -name "libs" | grep "V2rayNG/app" | head -n 1)
+        if [ -z "$V2RAY_LIBS" ]; then
+          V2RAY_APP=$(find . -type d -name "app" | grep "V2rayNG" | head -n 1)
+          mkdir -p "$V2RAY_APP/libs"
+          V2RAY_LIBS="$V2RAY_APP/libs"
+        fi
+        echo "Moving libv2ray.aar to $V2RAY_LIBS"
+        cp download_temp/libv2ray.aar "$V2RAY_LIBS/"
 
     - name: Restore cached libhysteria2
       id: cache-libhysteria2-restore
       uses: actions/cache/restore@v4
       with:
-        path: ${{ github.workspace }}/hysteria/libs
-        key: libhysteria2-${{ runner.os }}-${{ env.NDK_HOME }}-${{ hashFiles('.git/modules/hysteria/HEAD') }}-${{ hashFiles('libhysteria2.sh') }}
+        path: |
+          hysteria/libs
+          imported/hysteria/libs
+        key: libhysteria2-${{ runner.os }}-${{ env.NDK_HOME }}-${{ hashFiles('**/libhysteria2.sh') }}
+        restore-keys: |
+          libhysteria2-${{ runner.os }}-${{ env.NDK_HOME }}-
 
     - name: Setup Golang
       if: steps.cache-libhysteria2-restore.outputs.cache-hit != 'true'
       uses: actions/setup-go@v5.4.0
       with:
-        go-version-file: 'AndroidLibXrayLite/go.mod'
+        go-version: '1.22.x'
         cache: false
 
     - name: Build libhysteria2
       if: steps.cache-libhysteria2-restore.outputs.cache-hit != 'true'
       run: |
-        bash libhysteria2.sh
+        HYSTERIA_SCRIPT=$(find . -name "libhysteria2.sh" | head -n 1)
+        if [ ! -z "$HYSTERIA_SCRIPT" ]; then
+          HYSTERIA_DIR=$(dirname "$HYSTERIA_SCRIPT")
+          echo "Running hysteria build in $HYSTERIA_DIR"
+          pushd "$HYSTERIA_DIR"
+          chmod +x libhysteria2.sh
+          sed -i 's/\r$//' libhysteria2.sh
+          ./libhysteria2.sh
+          popd
+        else
+          echo "Error: libhysteria2.sh not found!"
+          exit 1
+        fi
 
     - name: Save libhysteria2
       if: steps.cache-libhysteria2-restore.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
-        path: ${{ github.workspace }}/hysteria/libs
-        key: libhysteria2-${{ runner.os }}-${{ env.NDK_HOME }}-${{ hashFiles('.git/modules/hysteria/HEAD') }}-${{ hashFiles('libhysteria2.sh') }}
+        path: |
+          hysteria/libs
+          imported/hysteria/libs
+        key: libhysteria2-${{ runner.os }}-${{ env.NDK_HOME }}-${{ hashFiles('**/libhysteria2.sh') }}
 
     - name: Copy libhysteria2
       run: |
-        cp -r ${{ github.workspace }}/hysteria/libs ${{ github.workspace }}/V2rayNG/app
+        HY_LIBS_SOURCE=$(find . -type d -name "libs" | grep "hysteria" | head -n 1)
+        V2RAY_APP=$(find . -type d -name "app" | grep "V2rayNG" | head -n 1)
+        if [ ! -z "$HY_LIBS_SOURCE" ] && [ ! -z "$V2RAY_APP" ]; then
+          echo "Copying from $HY_LIBS_SOURCE to $V2RAY_APP"
+          cp -r "$HY_LIBS_SOURCE" "$V2RAY_APP/"
+        else
+          echo "Error: Hysteria libs or V2rayNG/app not found!"
+          exit 1
+        fi
 
     - name: Setup Java
       uses: actions/setup-java@v4.7.0
@@ -132,39 +208,50 @@ jobs:
 
     - name: Build APK
       run: |
-        cd ${{ github.workspace }}/V2rayNG
-        echo "sdk.dir=${ANDROID_HOME}" > local.properties
-        chmod 755 gradlew
-        if [ "${{ env.HAS_KEYSTORE }}" = "true" ]; then
-          echo "Building signed Release APKs..."
-          ./gradlew licenseFdroidReleaseReport
-          ./gradlew assembleRelease \
-            -Pandroid.injected.signing.store.file=${{ steps.android_keystore.outputs.filePath }} \
-            -Pandroid.injected.signing.store.password=${{ secrets.APP_KEYSTORE_PASSWORD }} \
-            -Pandroid.injected.signing.key.alias=${{ secrets.APP_KEYSTORE_ALIAS }} \
-            -Pandroid.injected.signing.key.password=${{ secrets.APP_KEY_PASSWORD }}
+        V2RAY_DIR=$(find . -type d -name "V2rayNG" | head -n 1)
+        if [ ! -z "$V2RAY_DIR" ]; then
+          cd "$V2RAY_DIR"
+          echo "sdk.dir=${ANDROID_HOME}" > local.properties
+          chmod 755 gradlew
+          if [ "${{ env.HAS_KEYSTORE }}" = "true" ]; then
+            echo "Building signed Release APKs..."
+            ./gradlew licenseFdroidReleaseReport
+            ./gradlew assembleRelease \
+              -Pandroid.injected.signing.store.file=${{ steps.android_keystore.outputs.filePath }} \
+              -Pandroid.injected.signing.store.password=${{ secrets.APP_KEYSTORE_PASSWORD }} \
+              -Pandroid.injected.signing.key.alias=${{ secrets.APP_KEYSTORE_ALIAS }} \
+              -Pandroid.injected.signing.key.password=${{ secrets.APP_KEY_PASSWORD }}
+          else
+            echo "No signing keystore provided. Building Debug APKs..."
+            ./gradlew assembleFdroidDebug assembleDebug
+          fi
         else
-          echo "No signing keystore provided. Building Debug APKs..."
-          ./gradlew assembleFdroidDebug assembleDebug
+          echo "Error: V2rayNG directory not found!"
+          exit 1
         fi
 
     - name: Prepare Tag and Output Info
       id: prep_tag
       run: |
-        cd ${{ github.workspace }}
-        VERSION_NAME=$(python3 -c "import re; content=open('V2rayNG/app/build.gradle.kts').read(); print(re.search(r'versionName\s*=\s*\"([^\"]+)\"', content).group(1))")
-        echo "Version extracted: $VERSION_NAME"
-        if [ ! -z "${{ github.event.inputs.release_tag }}" ]; then
-          TAG="${{ github.event.inputs.release_tag }}"
+        GRADLE_KTS=$(find . -name "build.gradle.kts" | grep "V2rayNG/app" | head -n 1)
+        if [ ! -z "$GRADLE_KTS" ]; then
+          VERSION_NAME=$(python3 -c "import re; content=open('$GRADLE_KTS').read(); print(re.search(r'versionName\s*=\s*\"([^\"]+)\"', content).group(1))")
+          echo "Version extracted: $VERSION_NAME"
+          if [ ! -z "${{ github.event.inputs.release_tag }}" ]; then
+            TAG="${{ github.event.inputs.release_tag }}"
+          else
+            TAG="v${VERSION_NAME}-r${{ github.run_number }}"
+          fi
+          echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
         else
-          TAG="v${VERSION_NAME}-r${{ github.run_number }}"
+          echo "Error: build.gradle.kts not found!"
+          exit 1
         fi
-        echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
 
     - name: Collect Built APKs
       run: |
         mkdir -p ${{ github.workspace }}/apks
-        find ${{ github.workspace }}/V2rayNG/app/build/outputs/apk/ -type f -name "*.apk" | while read -r apk; do
+        find . -path "*/build/outputs/apk/*.apk" -type f | while read -r apk; do
           if [[ "$apk" != *"-unaligned"* ]]; then
             cp "$apk" ${{ github.workspace }}/apks/
           fi
@@ -182,31 +269,42 @@ jobs:
         tag = os.environ.get("RELEASE_TAG", "v1.10.32-r3")
         version_num = tag.lstrip('v').split('-')[0]
 
-        with open("README.md", "r", encoding="utf-8") as f:
-            content = f.read()
+        files_to_update = []
+        for root, dirs, files in os.walk("."):
+            dirs[:] = [d for d in dirs if not d.startswith('.')]
+            for f in files:
+                if f.lower() == "readme.md":
+                    files_to_update.append(os.path.join(root, f))
 
-        abis = ["universal", "arm64-v8a", "armeabi-v7a", "x86_64", "x86"]
-        for abi in abis:
-            pattern = r"https://github\.com/[^/]+/[^/]+/releases/(?:latest/download|download/[^/]+)/v2rayNG_[0-9.]+-fdroid_" + abi + r"\.apk"
-            new_url = f"https://github.com/{repo}/releases/download/{tag}/v2rayNG_{version_num}-fdroid_{abi}.apk"
-            content = re.sub(pattern, new_url, content)
+        print(f"Updating README files: {files_to_update}")
+        for filepath in files_to_update:
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
 
-        # Update absolute repo/release URLs
-        content = re.sub(r"https://img\.shields\.io/github/downloads/[^/]+/[^/]+/total", f"https://img.shields.io/github/downloads/{repo}/total", content)
-        content = re.sub(r"https://github\.com/[^/]+/[^/]+/releases", f"https://github.com/{repo}/releases", content)
+            abis = ["universal", "arm64-v8a", "armeabi-v7a", "x86_64", "x86"]
+            for abi in abis:
+                pattern = r"https://github\.com/[^/]+/[^/]+/releases/(?:latest/download|download/[^/]+)/v2rayNG_[0-9.]+-fdroid_" + abi + r"\.apk"
+                new_url = f"https://github.com/{repo}/releases/download/{tag}/v2rayNG_{version_num}-fdroid_{abi}.apk"
+                content = re.sub(pattern, new_url, content)
 
-        # Update current version section header
-        content = re.sub(r"تغییرات نسخه فعلی \([^\)]+\)", f"تغییرات نسخه فعلی ({tag})", content)
+            # Update absolute repo/release URLs
+            content = re.sub(r"https://img\.shields\.io/github/downloads/[^/]+/[^/]+/total", f"https://img.shields.io/github/downloads/{repo}/total", content)
+            content = re.sub(r"https://github\.com/[^/]+/[^/]+/releases", f"https://github.com/{repo}/releases", content)
 
-        with open("README.md", "w", encoding="utf-8") as f:
-            f.write(content)
+            # Update current version section header
+            content = re.sub(r"تغییرات نسخه فعلی \([^\)]+\)", f"تغییرات نسخه فعلی ({tag})", content)
+
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(content)
         print("Updated README.md contents successfully!")
 
     - name: Commit and Push README Changes
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
-        git add README.md
+        find . -name "README.md" | while read -r readme; do
+          git add "$readme"
+        done
         git diff-index --quiet HEAD || git commit -m "docs: update README.md for version ${{ env.RELEASE_TAG }} [skip ci]"
         git push origin master || echo "No changes or failed to push"
 
@@ -217,8 +315,10 @@ jobs:
         
         ## تغییرات این نسخه / Changelog:
         EOF
-        if [ -f "release_notes_v1.10.32.md" ]; then
-          cat release_notes_v1.10.32.md >> release_body.md
+        NOTES_FILE=$(find . -maxdepth 2 -name "release_notes_v*.md" | head -n 1)
+        if [ ! -z "$NOTES_FILE" ] && [ -f "$NOTES_FILE" ]; then
+          echo "Appending notes from $NOTES_FILE"
+          cat "$NOTES_FILE" >> release_body.md
         else
           echo "Automated compilation of built APKs for version ${{ env.RELEASE_TAG }}." >> release_body.md
         fi

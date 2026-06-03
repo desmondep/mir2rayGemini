@@ -12,7 +12,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Locate and Prepare Fastlane Dir
+        run: |
+          if [ -d "imported/fastlane" ]; then
+            echo "Found fastlane under imported/"
+            cp -r imported/fastlane ./fastlane
+          elif [ -d "fastlane" ]; then
+            echo "Found fastlane at root"
+          else
+            echo "Error: fastlane directory not found!"
+            exit 1
+          fi
       - name: Validate Fastlane Supply Metadata
         uses: ashutoshgngwr/validate-fastlane-supply-metadata@v2.1.0
         with:
-          fastlaneDir: imported/fastlane
+          fastlaneDir: fastlane
