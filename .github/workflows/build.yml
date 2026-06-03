@@ -10,6 +10,11 @@ on:
   push:
     branches:
       - master
+      - main
+  pull_request:
+    branches:
+      - master
+      - main
 
 permissions:
   contents: write
@@ -566,7 +571,7 @@ EOF
           git add "$readme"
         done
         git diff-index --quiet HEAD || git commit -m "docs: update README.md for version ${{ env.RELEASE_TAG }} [skip ci]"
-        git push origin master || echo "No changes or failed to push"
+        git push origin HEAD || echo "No changes or failed to push"
 
     - name: Prepare Release Notes
       run: |
