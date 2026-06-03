@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "v2rayNG Builder",
+  "description": "A workflow and build system for compiling the v2rayNG Android app and its native modules (libtun2socks, libhevtun, libhysteria2).",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
