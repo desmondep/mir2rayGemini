@@ -15,4 +15,4 @@ jobs:
       - name: Validate Fastlane Supply Metadata
         uses: ashutoshgngwr/validate-fastlane-supply-metadata@v2.1.0
         with:
-          metadata-dir: imported/fastlane/metadata/android
+          fastlaneDir: imported/fastlane
