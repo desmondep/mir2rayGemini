@@ -323,12 +323,19 @@ jobs:
 
     - name: Build libtun2socks
       run: |
-        # Specifically check if we have the compiled libraries in our libs or imported/libs folder
+        # Specifically check if we have the compiled libraries in any directory other than V2rayNG/app
         LIBS_DIR=""
-        if [ -d "imported/libs" ]; then
-          LIBS_DIR="imported/libs"
-        elif [ -d "libs" ]; then
-          LIBS_DIR="libs"
+        FOUND_SO_PATH=$(find . -name "libtun2socks.so" | grep -v "V2rayNG" | grep -v "/app/" | head -n 1)
+        if [ ! -z "$FOUND_SO_PATH" ]; then
+          LIBS_DIR=$(dirname "$(dirname "$FOUND_SO_PATH")")
+        fi
+
+        if [ -z "$LIBS_DIR" ]; then
+          if [ -d "imported/libs" ]; then
+            LIBS_DIR="imported/libs"
+          elif [ -d "libs" ]; then
+            LIBS_DIR="libs"
+          fi
         fi
 
         TUN2SOCKS_COUNT=0
@@ -369,28 +376,61 @@ jobs:
 
     - name: Copy libtun2socks
       run: |
-        if [ -d "imported/libs" ]; then
-          LIBS_SOURCE="imported/libs"
-        elif [ -d "libs" ]; then
-          LIBS_SOURCE="libs"
-        else
-          LIBS_SOURCE=$(find . -maxdepth 3 -type d -name "libs" | grep -v "V2rayNG" | grep -v "hysteria" | head -n 1)
+        # 1. Dynamically locate the compiled libs source directory
+        LIBS_SOURCE=""
+        FOUND_SO_PATH=$(find . -name "libtun2socks.so" | grep -v "V2rayNG" | grep -v "/app/" | head -n 1)
+        if [ ! -z "$FOUND_SO_PATH" ]; then
+          LIBS_SOURCE=$(dirname "$(dirname "$FOUND_SO_PATH")")
         fi
 
-        if [ -d "imported/V2rayNG/app" ]; then
-          V2RAY_APP="imported/V2rayNG/app"
-        elif [ -d "V2rayNG/app" ]; then
-          V2RAY_APP="V2rayNG/app"
-        else
-          V2RAY_APP=$(find . -type d -name "app" | grep "V2rayNG" | head -n 1)
+        # Fallback to standard check if no file was dynamically resolved
+        if [ -z "$LIBS_SOURCE" ]; then
+          if [ -d "imported/libs" ]; then
+            LIBS_SOURCE="imported/libs"
+          elif [ -d "libs" ]; then
+            LIBS_SOURCE="libs"
+          fi
         fi
 
-        if [ ! -z "$LIBS_SOURCE" ] && [ ! -z "$V2RAY_APP" ] && [ -d "$LIBS_SOURCE" ]; then
+        # 2. Dynamically locate V2rayNG/app directory of the target Android app
+        V2RAY_APP=""
+        GRADLE_PATH=$(find . -name "build.gradle.kts" | grep -i "app/build.gradle" | head -n 1)
+        if [ ! -z "$GRADLE_PATH" ]; then
+          V2RAY_APP=$(dirname "$GRADLE_PATH")
+        fi
+
+        # Fallback to standard check if no Gradle build path was dynamically resolved
+        if [ -z "$V2RAY_APP" ]; then
+          if [ -d "imported/V2rayNG/app" ]; then
+            V2RAY_APP="imported/V2rayNG/app"
+          elif [ -d "V2rayNG/app" ]; then
+            V2RAY_APP="V2rayNG/app"
+          else
+            V2RAY_APP=$(find . -type d -name "app" | grep -i "V2rayNG" | head -n 1)
+          fi
+        fi
+
+        echo "=== Location Resolution ==="
+        echo "LIBS_SOURCE resolved to: $LIBS_SOURCE"
+        echo "V2RAY_APP resolved to: $V2RAY_APP"
+
+        if [ ! -z "$LIBS_SOURCE" ] && [ ! -z "$V2RAY_APP" ] && [ -d "$LIBS_SOURCE" ] && [ -d "$V2RAY_APP" ]; then
           echo "Copying contents from $LIBS_SOURCE to $V2RAY_APP/libs"
           mkdir -p "$V2RAY_APP/libs"
           cp -r "$LIBS_SOURCE/." "$V2RAY_APP/libs/"
+          echo "Listing copied libraries:"
+          find "$V2RAY_APP/libs" -name "*.so"
         else
-          echo "Error: libs or V2rayNG/app not found!"
+          echo "=== DIAGNOSTICS ==="
+          echo "Current directory: $(pwd)"
+          echo "Files in current directory:"
+          ls -la
+          echo "All directories named 'libs' in the project:"
+          find . -type d -name "libs" 2>/dev/null
+          echo "All libraries named 'libtun2socks.so' in the project:"
+          find . -name "libtun2socks.so" 2>/dev/null
+          echo "All files named 'build.gradle.kts' in the project:"
+          find . -name "build.gradle.kts" 2>/dev/null
           exit 1
         fi
 
@@ -446,12 +486,19 @@ jobs:
 
     - name: Build libhysteria2
       run: |
-        # Specifically check if we have the compiled libraries in our hysteria/libs or imported/hysteria/libs folder
+        # Specifically check if we have the compiled hysteria libraries in any top-level hysteria/libs folder
         HY_LIBS_DIR=""
-        if [ -d "imported/hysteria/libs" ]; then
-          HY_LIBS_DIR="imported/hysteria/libs"
-        elif [ -d "hysteria/libs" ]; then
-          HY_LIBS_DIR="hysteria/libs"
+        FOUND_HY_PATH=$(find . -name "libhysteria2.so" | grep -v "V2rayNG" | grep -v "/app/" | head -n 1)
+        if [ ! -z "$FOUND_HY_PATH" ]; then
+          HY_LIBS_DIR=$(dirname "$(dirname "$FOUND_HY_PATH")")
+        fi
+
+        if [ -z "$HY_LIBS_DIR" ]; then
+          if [ -d "imported/hysteria/libs" ]; then
+            HY_LIBS_DIR="imported/hysteria/libs"
+          elif [ -d "hysteria/libs" ]; then
+            HY_LIBS_DIR="hysteria/libs"
+          fi
         fi
 
         HY_LIBS_COUNT=0
@@ -489,28 +536,59 @@ jobs:
 
     - name: Copy libhysteria2
       run: |
-        if [ -d "imported/hysteria/libs" ]; then
-          HY_LIBS_SOURCE="imported/hysteria/libs"
-        elif [ -d "hysteria/libs" ]; then
-          HY_LIBS_SOURCE="hysteria/libs"
-        else
-          HY_LIBS_SOURCE=$(find . -type d -name "libs" | grep "hysteria" | head -n 1)
+        # 1. Dynamically locate the compiled hysteria libs source directory
+        HY_LIBS_SOURCE=""
+        FOUND_HY_PATH=$(find . -name "libhysteria2.so" | grep -v "V2rayNG" | grep -v "/app/" | head -n 1)
+        if [ ! -z "$FOUND_HY_PATH" ]; then
+          HY_LIBS_SOURCE=$(dirname "$(dirname "$FOUND_HY_PATH")")
         fi
 
-        if [ -d "imported/V2rayNG/app" ]; then
-          V2RAY_APP="imported/V2rayNG/app"
-        elif [ -d "V2rayNG/app" ]; then
-          V2RAY_APP="V2rayNG/app"
-        else
-          V2RAY_APP=$(find . -type d -name "app" | grep "V2rayNG" | head -n 1)
+        # Fallback to standard check if no file was dynamically resolved
+        if [ -z "$HY_LIBS_SOURCE" ]; then
+          if [ -d "imported/hysteria/libs" ]; then
+            HY_LIBS_SOURCE="imported/hysteria/libs"
+          elif [ -d "hysteria/libs" ]; then
+            HY_LIBS_SOURCE="hysteria/libs"
+          fi
         fi
 
-        if [ ! -z "$HY_LIBS_SOURCE" ] && [ ! -z "$V2RAY_APP" ] && [ -d "$HY_LIBS_SOURCE" ]; then
+        # 2. Dynamically locate V2rayNG/app directory of the target Android app
+        V2RAY_APP=""
+        GRADLE_PATH=$(find . -name "build.gradle.kts" | grep -i "app/build.gradle" | head -n 1)
+        if [ ! -z "$GRADLE_PATH" ]; then
+          V2RAY_APP=$(dirname "$GRADLE_PATH")
+        fi
+
+        # Fallback to standard check if no Gradle build path was dynamically resolved
+        if [ -z "$V2RAY_APP" ]; then
+          if [ -d "imported/V2rayNG/app" ]; then
+            V2RAY_APP="imported/V2rayNG/app"
+          elif [ -d "V2rayNG/app" ]; then
+            V2RAY_APP="V2rayNG/app"
+          else
+            V2RAY_APP=$(find . -type d -name "app" | grep -i "V2rayNG" | head -n 1)
+          fi
+        fi
+
+        echo "=== Location Resolution ==="
+        echo "HY_LIBS_SOURCE resolved to: $HY_LIBS_SOURCE"
+        echo "V2RAY_APP resolved to: $V2RAY_APP"
+
+        if [ ! -z "$HY_LIBS_SOURCE" ] && [ ! -z "$V2RAY_APP" ] && [ -d "$HY_LIBS_SOURCE" ] && [ -d "$V2RAY_APP" ]; then
           echo "Copying contents from $HY_LIBS_SOURCE to $V2RAY_APP/libs"
           mkdir -p "$V2RAY_APP/libs"
           cp -r "$HY_LIBS_SOURCE/." "$V2RAY_APP/libs/"
+          echo "Listing copied libraries:"
+          find "$V2RAY_APP/libs" -name "*.so"
         else
-          echo "Error: Hysteria libs or V2rayNG/app not found!"
+          echo "=== DIAGNOSTICS ==="
+          echo "Current directory: $(pwd)"
+          echo "Files in current directory:"
+          ls -la
+          echo "All directories named 'libs' in the project:"
+          find . -type d -name "libs" 2>/dev/null
+          echo "All libraries named 'libhysteria2.so' in the project:"
+          find . -name "libhysteria2.so" 2>/dev/null
           exit 1
         fi
 
