@@ -83,6 +83,9 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
                 pendingConnectAttempt = false
                 binding.pbConnect.isVisible = false
                 stopConnectPulse()
+                binding.pbConnectingRing.isVisible = false
+                binding.ringConnected.isVisible = false
+                binding.ivPowerIcon.setColorFilter(ColorStateList.valueOf(ContextCompat.getColor(this, R.color.neon_import_icon)).defaultColor)
                 updateProcessState(getString(R.string.neon_connect_failed))
             }
         } else {
@@ -220,13 +223,19 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
             }
         }
 
+        binding.btnImport.setOnClickListener {
+            lifecycleScope.launch {
+                importClipboard()
+            }
+        }
+
         binding.btnConnect.setOnClickListener {
             lifecycleScope.launch {
                 toggleConnect()
             }
         }
 
-        binding.btnNextConfig.setOnClickListener {
+        binding.layoutNextConfig.setOnClickListener {
             lifecycleScope.launch {
                 skipToNextConfig()
             }
@@ -348,11 +357,18 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
                 setTestState(getString(R.string.connection_connected))
                 binding.layoutTest.isFocusable = true
                 binding.btnConnect.text = getString(R.string.neon_disconnect)
+                binding.btnConnect.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.neon_circle_glow_green))
+                binding.ringConnected.isVisible = true
+                binding.ivPowerIcon.setColorFilter(ContextCompat.getColor(this, R.color.neon_circle_glow_green))
                 binding.pbConnect.isVisible = false
                 stopConnectPulse()
+                binding.pbConnectingRing.isVisible = false
+                binding.ringConnected.isVisible = true
                 pendingConnectAttempt = false
+                binding.btnConnect.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.neon_circle_glow_green))
+                binding.ivPowerIcon.setColorFilter(ContextCompat.getColor(this, R.color.neon_circle_glow_green))
                 updateProcessState(getString(R.string.neon_connected))
-                binding.btnNextConfig.isVisible = true
+                binding.layoutNextConfig.isVisible = true
                 if (mainViewModel.isRunning.value == true) {
                     scheduleNextAutoPingCheck(AUTO_PING_STABILIZATION_MS)
                     startPingLoop()
@@ -386,7 +402,10 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
                 setTestState(getString(R.string.connection_not_connected))
                 binding.layoutTest.isFocusable = false
                 binding.btnConnect.text = getString(R.string.neon_connect)
-                binding.btnNextConfig.isVisible = false
+                binding.ringConnected.isVisible = false
+                binding.pbConnectingRing.isVisible = false
+                binding.ivPowerIcon.setColorFilter(ColorStateList.valueOf(ContextCompat.getColor(this, R.color.neon_import_icon)).defaultColor)
+                binding.layoutNextConfig.isVisible = false
                 stopPingLoop()
                 stopLiveStatsLoop()
                 if (pendingConnectAttempt) {
@@ -870,7 +889,7 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
             return
         }
 
-        binding.btnNextConfig.isEnabled = false
+        binding.layoutNextConfig.isEnabled = false
         updateProcessState("درحال سوییچ به کانفیگ بعدی…")
 
         try {
@@ -910,7 +929,7 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
             scheduleNextAutoPingCheck(AUTO_PING_STABILIZATION_MS)
             restartV2Ray()
         } finally {
-            binding.btnNextConfig.isEnabled = true
+            binding.layoutNextConfig.isEnabled = true
         }
     }
 
@@ -978,6 +997,9 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
         binding.pbConnect.isVisible = true
         startConnectPulse()
         updateProcessState(getString(R.string.neon_connecting))
+        binding.ringConnected.isVisible = false
+        binding.pbConnectingRing.isVisible = true
+        binding.ivPowerIcon.setColorFilter(ContextCompat.getColor(this, R.color.neon_circle_glow_blue))
         connectTimeoutJob?.cancel()
         connectTimeoutJob = lifecycleScope.launch {
             delay(15_000)
@@ -985,6 +1007,9 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
                 pendingConnectAttempt = false
                 binding.pbConnect.isVisible = false
                 stopConnectPulse()
+                binding.pbConnectingRing.isVisible = false
+                binding.ringConnected.isVisible = false
+                binding.ivPowerIcon.setColorFilter(ColorStateList.valueOf(ContextCompat.getColor(this, R.color.neon_import_icon)).defaultColor)
                 updateProcessState(getString(R.string.neon_connect_failed))
             }
         }
