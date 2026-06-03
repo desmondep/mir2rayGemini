@@ -4,11 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
+        description: 'Custom Tag for release (e.g. v1.10.32-r3)'
         required: false
         type: string
   push:
     branches:
       - master
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -113,7 +117,16 @@ jobs:
         distribution: 'temurin'
         java-version: '21'
 
+    - name: Check Keystore Availability
+      run: |
+        if [ ! -z "${{ secrets.APP_KEYSTORE_BASE64 }}" ]; then
+          echo "HAS_KEYSTORE=true" >> $GITHUB_ENV
+        else
+          echo "HAS_KEYSTORE=false" >> $GITHUB_ENV
+        fi
+
     - name: Decode Keystore
+      if: env.HAS_KEYSTORE == 'true'
       uses: timheuer/base64-to-file@v1.2.4
       id: android_keystore
       with:
@@ -125,35 +138,103 @@ jobs:
         cd ${{ github.workspace }}/V2rayNG
         echo "sdk.dir=${ANDROID_HOME}" > local.properties
         chmod 755 gradlew
-        ./gradlew licenseFdroidReleaseReport
-        ./gradlew assembleRelease -Pandroid.injected.signing.store.file=${{ steps.android_keystore.outputs.filePath }} -Pandroid.injected.signing.store.password=${{ secrets.APP_KEYSTORE_PASSWORD }} -Pandroid.injected.signing.key.alias=${{ secrets.APP_KEYSTORE_ALIAS }} -Pandroid.injected.signing.key.password=${{ secrets.APP_KEY_PASSWORD }}
-    
-    - name: Upload arm64-v8a APK
-      uses: actions/upload-artifact@v4.6.2
-      if: ${{  success() }}
-      with:
-        name: arm64-v8a
-        path: ${{ github.workspace }}/V2rayNG/app/build/outputs/apk/*/release/*arm64-v8a*.apk
+        if [ "${{ env.HAS_KEYSTORE }}" = "true" ]; then
+          echo "Building signed Release APKs..."
+          ./gradlew licenseFdroidReleaseReport
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=${{ steps.android_keystore.outputs.filePath }} \
+            -Pandroid.injected.signing.store.password=${{ secrets.APP_KEYSTORE_PASSWORD }} \
+            -Pandroid.injected.signing.key.alias=${{ secrets.APP_KEYSTORE_ALIAS }} \
+            -Pandroid.injected.signing.key.password=${{ secrets.APP_KEY_PASSWORD }}
+        else
+          echo "No signing keystore provided. Building Debug APKs..."
+          ./gradlew assembleFdroidDebug assembleDebug
+        fi
 
-    - name: Upload armeabi-v7a APK
-      uses: actions/upload-artifact@v4.6.2
-      if: ${{  success() }}
-      with:
-        name: armeabi-v7a
-        path: ${{ github.workspace }}/V2rayNG/app/build/outputs/apk/*/release/*armeabi-v7a*.apk
+    - name: Prepare Tag and Output Info
+      id: prep_tag
+      run: |
+        cd ${{ github.workspace }}
+        VERSION_NAME=$(python3 -c "import re; content=open('V2rayNG/app/build.gradle.kts').read(); print(re.search(r'versionName\s*=\s*\"([^\"]+)\"', content).group(1))")
+        echo "Version extracted: $VERSION_NAME"
+        if [ ! -z "${{ github.event.inputs.release_tag }}" ]; then
+          TAG="${{ github.event.inputs.release_tag }}"
+        else
+          TAG="v${VERSION_NAME}-r${{ github.run_number }}"
+        fi
+        echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
 
-    - name: Upload x86 APK
-      uses: actions/upload-artifact@v4.6.2
-      if: ${{  success() }}
-      with:
-        name: x86-apk
-        path: ${{ github.workspace }}/V2rayNG/app/build/outputs/apk/*/release/*x86*.apk
+    - name: Collect Built APKs
+      run: |
+        mkdir -p ${{ github.workspace }}/apks
+        find ${{ github.workspace }}/V2rayNG/app/build/outputs/apk/ -type f -name "*.apk" | while read -r apk; do
+          if [[ "$apk" != *"-unaligned"* ]]; then
+            cp "$apk" ${{ github.workspace }}/apks/
+          fi
+        done
+        echo "Collected apks:"
+        ls -la ${{ github.workspace }}/apks/
+
+    - name: Update README with New Version and Links
+      shell: python
+      run: |
+        import re
+        import os
+
+        repo = os.environ.get("GITHUB_REPOSITORY", "desmondep/Mir2Ray")
+        tag = os.environ.get("RELEASE_TAG", "v1.10.32-r3")
+        version_num = tag.lstrip('v').split('-')[0]
+
+        with open("README.md", "r", encoding="utf-8") as f:
+            content = f.read()
+
+        abis = ["universal", "arm64-v8a", "armeabi-v7a", "x86_64", "x86"]
+        for abi in abis:
+            pattern = r"https://github\.com/[^/]+/[^/]+/releases/(?:latest/download|download/[^/]+)/v2rayNG_[0-9.]+-fdroid_" + abi + r"\.apk"
+            new_url = f"https://github.com/{repo}/releases/download/{tag}/v2rayNG_{version_num}-fdroid_{abi}.apk"
+            content = re.sub(pattern, new_url, content)
+
+        # Update absolute repo/release URLs
+        content = re.sub(r"https://img\.shields\.io/github/downloads/[^/]+/[^/]+/total", f"https://img.shields.io/github/downloads/{repo}/total", content)
+        content = re.sub(r"https://github\.com/[^/]+/[^/]+/releases", f"https://github.com/{repo}/releases", content)
+
+        # Update current version section header
+        content = re.sub(r"تغییرات نسخه فعلی \([^\)]+\)", f"تغییرات نسخه فعلی ({tag})", content)
+
+        with open("README.md", "w", encoding="utf-8") as f:
+            f.write(content)
+        print("Updated README.md contents successfully!")
+
+    - name: Commit and Push README Changes
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add README.md
+        git diff-index --quiet HEAD || git commit -m "docs: update README.md for version ${{ env.RELEASE_TAG }} [skip ci]"
+        git push origin master || echo "No changes or failed to push"
+
+    - name: Prepare Release Notes
+      run: |
+        cat << 'EOF' > release_body.md
+        # Mir2Ray ${{ env.RELEASE_TAG }}
+        
+        ## تغییرات این نسخه / Changelog:
+        EOF
+        if [ -f "release_notes_v1.10.32.md" ]; then
+          cat release_notes_v1.10.32.md >> release_body.md
+        else
+          echo "Automated compilation of built APKs for version ${{ env.RELEASE_TAG }}." >> release_body.md
+        fi
 
     - name: Upload to release
-      uses: svenstaro/upload-release-action@v2
-      if: github.event.inputs.release_tag != ''
+      uses: softprops/action-gh-release@v2
       with:
-        file: ${{ github.workspace }}/V2rayNG/app/build/outputs/apk/*/release/*.apk
-        tag: ${{ github.event.inputs.release_tag }}
-        file_glob: true
-        prerelease: true
+        tag_name: ${{ env.RELEASE_TAG }}
+        name: Mir2Ray ${{ env.RELEASE_TAG }}
+        body_path: ${{ github.workspace }}/release_body.md
+        files: |
+          ${{ github.workspace }}/apks/*.apk
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
