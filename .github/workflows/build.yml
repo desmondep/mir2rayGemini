@@ -261,46 +261,36 @@ jobs:
         # 1. badvpn
         if [ ! -f "$BASE_DIR/badvpn/CMakeLists.txt" ]; then
           echo "Cloning badvpn submodule..."
-          rm -rf tmp_badvpn
-          git clone --depth 1 https://github.com/XTLS/badvpn tmp_badvpn
           rm -rf "$BASE_DIR/badvpn"
-          mv tmp_badvpn "$BASE_DIR/badvpn"
+          git clone --depth 1 https://github.com/XTLS/badvpn "$BASE_DIR/badvpn"
         fi
         
         # 2. libancillary
         if [ ! -f "$BASE_DIR/libancillary/ancillary.h" ]; then
           echo "Cloning libancillary submodule..."
-          rm -rf tmp_libancillary
-          git clone --depth 1 https://github.com/shadowsocks/libancillary tmp_libancillary
           rm -rf "$BASE_DIR/libancillary"
-          mv tmp_libancillary "$BASE_DIR/libancillary"
+          git clone --depth 1 https://github.com/shadowsocks/libancillary "$BASE_DIR/libancillary"
         fi
         
         # 3. hev-socks5-tunnel (Needs recursive clone for yaml, lwip, hev-task-system)
         if [ ! -f "$BASE_DIR/hev-socks5-tunnel/Android.mk" ]; then
           echo "Cloning hev-socks5-tunnel submodule with submodules..."
-          rm -rf tmp_hev
-          git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/heiher/hev-socks5-tunnel tmp_hev
           rm -rf "$BASE_DIR/hev-socks5-tunnel"
-          mv tmp_hev "$BASE_DIR/hev-socks5-tunnel"
+          git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/heiher/hev-socks5-tunnel "$BASE_DIR/hev-socks5-tunnel"
         fi
         
         # 4. AndroidLibXrayLite
         if [ ! -f "$BASE_DIR/AndroidLibXrayLite/build.gradle" ]; then
           echo "Cloning AndroidLibXrayLite submodule..."
-          rm -rf tmp_xray
-          git clone --depth 1 https://github.com/2dust/AndroidLibXrayLite tmp_xray
           rm -rf "$BASE_DIR/AndroidLibXrayLite"
-          mv tmp_xray "$BASE_DIR/AndroidLibXrayLite"
+          git clone --depth 1 https://github.com/2dust/AndroidLibXrayLite "$BASE_DIR/AndroidLibXrayLite"
         fi
         
         # 5. hysteria
         if [ ! -f "$BASE_DIR/hysteria/go.mod" ]; then
           echo "Cloning hysteria submodule..."
-          rm -rf tmp_hysteria
-          git clone --depth 1 https://github.com/apernet/hysteria tmp_hysteria
           rm -rf "$BASE_DIR/hysteria"
-          mv tmp_hysteria "$BASE_DIR/hysteria"
+          git clone --depth 1 https://github.com/apernet/hysteria "$BASE_DIR/hysteria"
         fi
         
         echo "=== Finished Submodule Preparation ==="
