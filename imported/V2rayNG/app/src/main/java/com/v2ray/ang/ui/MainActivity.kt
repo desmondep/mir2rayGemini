@@ -124,6 +124,7 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
     private var lastPingMillis: Long? = null
     private var pendingConnectAttempt = false
     private var toggleInProgress = false
+    private var isConnecting = false
     private var connectAttemptStartedAt = 0L
     private var isGiveConfigsRunning = false
     private var isOptimizeRunning = false
@@ -1154,7 +1155,7 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
                 MmkvManager.encodeSettings(AppConfig.PREF_DOMESTIC_DNS, ip)
                 updateProcessState("DNS اعمال شد: ${selected.server.name} (${ip})")
             }
-            .setNegativeButton(getString(R.string.text_cancel), null)
+            .setNegativeButton(android.R.string.cancel, null)
             .show()
     }
 
@@ -1562,9 +1563,9 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
         // Fetch Live IP in background once
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val ip = HttpUtil.get("https://api.ipify.org/")
+                val ip = HttpUtil.getUrlContent("https://api.ipify.org/", 15000)
                 withContext(Dispatchers.Main) {
-                    if (ip.isNotBlank()) binding.tvLiveIp.text = ip
+                    if (!ip.isNullOrBlank()) binding.tvLiveIp.text = ip
                     else binding.tvLiveIp.text = "Unknown"
                 }
             } catch (e: Exception) {
@@ -1582,8 +1583,13 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
                 var totalUp = 0L
                 var totalDown = 0L
                 
-                val currentConfig = mainViewModel.serversCache.firstOrNull { it.guid == mainViewModel.serverList[mainViewModel.selectedList.firstOrNull() ?: -1] }
-                
+                val selectedIndex = mainViewModel.selectedList.firstOrNull() ?: 0
+                val currentGuid = mainViewModel.serverList
+                    .withIndex()
+                    .firstOrNull { it.index == selectedIndex }
+                    ?.value
+                val currentConfig = currentGuid?.let { guid -> mainViewModel.serversCache.firstOrNull { it.guid == guid } }
+
                 val outboundTags = mutableListOf<String>()
                 outboundTags.add(AppConfig.TAG_PROXY)
                 // In generic mode, it checks all tags. Let's just sum all:
