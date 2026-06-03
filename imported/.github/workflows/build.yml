@@ -322,21 +322,27 @@ jobs:
           libtun2socks-${{ runner.os }}-${{ env.NDK_HOME }}-
 
     - name: Build libtun2socks
-      if: steps.cache-libtun2socks-restore.outputs.cache-hit != 'true'
       run: |
-        SCRIPT_PATH=$(find . -name "compile-tun2socks.sh" | head -n 1)
-        if [ ! -z "$SCRIPT_PATH" ]; then
-          SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
-          echo "Running tun2socks compilations inside $SCRIPT_DIR"
-          pushd "$SCRIPT_DIR"
-          chmod +x compile-tun2socks.sh compile-hevtun.sh
-          sed -i 's/\r$//' compile-tun2socks.sh
-          sed -i 's/\r$//' compile-hevtun.sh
-          ./compile-tun2socks.sh && ./compile-hevtun.sh
-          popd
+        # Check if we have .so files restored from cache (excluding any in V2rayNG or hysteria)
+        LIBS_COUNT=$(find . -name "*.so" | grep -v "V2rayNG" | grep -v "hysteria" | wc -l)
+        if [ "$LIBS_COUNT" -gt 0 ]; then
+          echo "Cached libtun2socks/libhevtun are already present ($LIBS_COUNT files). Skipping compilation."
         else
-          echo "Error: compile-tun2socks.sh not found!"
-          exit 1
+          echo "libtun2socks/libhevtun are not found or empty (even if cache was hit). Starting compilation..."
+          SCRIPT_PATH=$(find . -name "compile-tun2socks.sh" | head -n 1)
+          if [ ! -z "$SCRIPT_PATH" ]; then
+            SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
+            echo "Running tun2socks compilations inside $SCRIPT_DIR"
+            pushd "$SCRIPT_DIR"
+            chmod +x compile-tun2socks.sh compile-hevtun.sh
+            sed -i 's/\r$//' compile-tun2socks.sh
+            sed -i 's/\r$//' compile-hevtun.sh
+            ./compile-tun2socks.sh && ./compile-hevtun.sh
+            popd
+          else
+            echo "Error: compile-tun2socks.sh not found!"
+            exit 1
+          fi
         fi
     
     - name: Save libtun2socks
@@ -350,9 +356,23 @@ jobs:
 
     - name: Copy libtun2socks
       run: |
-        LIBS_SOURCE=$(find . -maxdepth 3 -type d -name "libs" | grep -v "V2rayNG" | grep -v "hysteria" | head -n 1)
-        V2RAY_APP=$(find . -type d -name "app" | grep "V2rayNG" | head -n 1)
-        if [ ! -z "$LIBS_SOURCE" ] && [ ! -z "$V2RAY_APP" ]; then
+        if [ -d "imported/libs" ]; then
+          LIBS_SOURCE="imported/libs"
+        elif [ -d "libs" ]; then
+          LIBS_SOURCE="libs"
+        else
+          LIBS_SOURCE=$(find . -maxdepth 3 -type d -name "libs" | grep -v "V2rayNG" | grep -v "hysteria" | head -n 1)
+        fi
+
+        if [ -d "imported/V2rayNG/app" ]; then
+          V2RAY_APP="imported/V2rayNG/app"
+        elif [ -d "V2rayNG/app" ]; then
+          V2RAY_APP="V2rayNG/app"
+        else
+          V2RAY_APP=$(find . -type d -name "app" | grep "V2rayNG" | head -n 1)
+        fi
+
+        if [ ! -z "$LIBS_SOURCE" ] && [ ! -z "$V2RAY_APP" ] && [ -d "$LIBS_SOURCE" ]; then
           echo "Copying from $LIBS_SOURCE to $V2RAY_APP"
           cp -r "$LIBS_SOURCE" "$V2RAY_APP/"
         else
@@ -405,27 +425,32 @@ jobs:
           libhysteria2-${{ runner.os }}-${{ env.NDK_HOME }}-
 
     - name: Setup Golang
-      if: steps.cache-libhysteria2-restore.outputs.cache-hit != 'true'
       uses: actions/setup-go@v5.4.0
       with:
         go-version: '1.22.x'
         cache: false
 
     - name: Build libhysteria2
-      if: steps.cache-libhysteria2-restore.outputs.cache-hit != 'true'
       run: |
-        HYSTERIA_SCRIPT=$(find . -name "libhysteria2.sh" | head -n 1)
-        if [ ! -z "$HYSTERIA_SCRIPT" ]; then
-          HYSTERIA_DIR=$(dirname "$HYSTERIA_SCRIPT")
-          echo "Running hysteria build in $HYSTERIA_DIR"
-          pushd "$HYSTERIA_DIR"
-          chmod +x libhysteria2.sh
-          sed -i 's/\r$//' libhysteria2.sh
-          ./libhysteria2.sh
-          popd
+        # Check if hysteria libs exist and are not empty
+        HY_LIBS_COUNT=$(find . -name "libhysteria2.so" | wc -l)
+        if [ "$HY_LIBS_COUNT" -gt 0 ]; then
+          echo "Hysteria libs are already present ($HY_LIBS_COUNT files). Skipping compilation."
         else
-          echo "Error: libhysteria2.sh not found!"
-          exit 1
+          echo "Hysteria libs not found or empty. Starting compilation..."
+          HYSTERIA_SCRIPT=$(find . -name "libhysteria2.sh" | head -n 1)
+          if [ ! -z "$HYSTERIA_SCRIPT" ]; then
+            HYSTERIA_DIR=$(dirname "$HYSTERIA_SCRIPT")
+            echo "Running hysteria build in $HYSTERIA_DIR"
+            pushd "$HYSTERIA_DIR"
+            chmod +x libhysteria2.sh
+            sed -i 's/\r$//' libhysteria2.sh
+            ./libhysteria2.sh
+            popd
+          else
+            echo "Error: libhysteria2.sh not found!"
+            exit 1
+          fi
         fi
 
     - name: Save libhysteria2
@@ -439,9 +464,23 @@ jobs:
 
     - name: Copy libhysteria2
       run: |
-        HY_LIBS_SOURCE=$(find . -type d -name "libs" | grep "hysteria" | head -n 1)
-        V2RAY_APP=$(find . -type d -name "app" | grep "V2rayNG" | head -n 1)
-        if [ ! -z "$HY_LIBS_SOURCE" ] && [ ! -z "$V2RAY_APP" ]; then
+        if [ -d "imported/hysteria/libs" ]; then
+          HY_LIBS_SOURCE="imported/hysteria/libs"
+        elif [ -d "hysteria/libs" ]; then
+          HY_LIBS_SOURCE="hysteria/libs"
+        else
+          HY_LIBS_SOURCE=$(find . -type d -name "libs" | grep "hysteria" | head -n 1)
+        fi
+
+        if [ -d "imported/V2rayNG/app" ]; then
+          V2RAY_APP="imported/V2rayNG/app"
+        elif [ -d "V2rayNG/app" ]; then
+          V2RAY_APP="V2rayNG/app"
+        else
+          V2RAY_APP=$(find . -type d -name "app" | grep "V2rayNG" | head -n 1)
+        fi
+
+        if [ ! -z "$HY_LIBS_SOURCE" ] && [ ! -z "$V2RAY_APP" ] && [ -d "$HY_LIBS_SOURCE" ]; then
           echo "Copying from $HY_LIBS_SOURCE to $V2RAY_APP"
           cp -r "$HY_LIBS_SOURCE" "$V2RAY_APP/"
         else
