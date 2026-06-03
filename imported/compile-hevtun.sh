@@ -22,7 +22,7 @@ pushd "$TMPDIR"
 
 echo 'include $(call all-subdir-makefiles)' > jni/Android.mk
 
-ln -s "$__dir/hev-socks5-tunnel" jni/hev-socks5-tunnel
+cp -r "$__dir/hev-socks5-tunnel" jni/hev-socks5-tunnel
 
 "$NDK_HOME/ndk-build" \
     NDK_PROJECT_PATH=. \
