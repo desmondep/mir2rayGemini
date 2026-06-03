@@ -323,10 +323,11 @@ jobs:
 
     - name: Build libtun2socks
       run: |
-        # Check if we have .so files restored from cache (excluding any in V2rayNG or hysteria)
-        LIBS_COUNT=$(find . -name "*.so" | grep -v "V2rayNG" | grep -v "hysteria" | wc -l)
-        if [ "$LIBS_COUNT" -gt 0 ]; then
-          echo "Cached libtun2socks/libhevtun are already present ($LIBS_COUNT files). Skipping compilation."
+        # Verify if local compiled binaries exist specifically for libtun2socks and libhevtun
+        TUN2SOCKS_COUNT=$(find . -name "libtun2socks.so" | wc -l)
+        HEVTUN_COUNT=$(find . -name "libhevtun.so" | wc -l)
+        if [ "$TUN2SOCKS_COUNT" -gt 0 ] && [ "$HEVTUN_COUNT" -gt 0 ]; then
+          echo "Cached libtun2socks.so ($TUN2SOCKS_COUNT files) and libhevtun.so ($HEVTUN_COUNT files) are already present. Skipping compilation."
         else
           echo "libtun2socks/libhevtun are not found or empty (even if cache was hit). Starting compilation..."
           SCRIPT_PATH=$(find . -name "compile-tun2socks.sh" | head -n 1)
