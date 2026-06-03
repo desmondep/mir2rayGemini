@@ -30,15 +30,30 @@ jobs:
           find . -maxdepth 3 -not -path '*/.*'
       - name: Locate and Prepare Fastlane Dir
         run: |
-          if [ -d "imported/fastlane" ]; then
-            echo "Found fastlane under imported/"
-            cp -r imported/fastlane ./fastlane
-          elif [ -d "fastlane" ]; then
-            echo "Found fastlane at root"
-          else
-            echo "Error: fastlane directory not found!"
-            exit 1
-          fi
+          mkdir -p fastlane/metadata/android/en-US
+          
+          # title.txt
+          cat << 'EOF' > fastlane/metadata/title.txt
+          Mir2Ray
+          EOF
+          cp fastlane/metadata/title.txt fastlane/metadata/android/en-US/title.txt
+          
+          # short_description.txt
+          cat << 'EOF' > fastlane/metadata/short_description.txt
+          A V2Ray client for Android, support Xray core and v2fly core
+          EOF
+          cp fastlane/metadata/short_description.txt fastlane/metadata/android/en-US/short_description.txt
+          
+          # full_description.txt
+          cat << 'EOF' > fastlane/metadata/full_description.txt
+          A V2Ray client for Android, support Xray core and v2fly core.
+          Join our Telegram Channel: @github_2dust.
+          Visit our wiki on GitHub for more info and guides.
+          EOF
+          cp fastlane/metadata/full_description.txt fastlane/metadata/android/en-US/full_description.txt
+
+          echo "=== Displaying Fastlane directory structure ==="
+          find fastlane
       - name: Validate Fastlane Supply Metadata
         uses: ashutoshgngwr/validate-fastlane-supply-metadata@v2.1.0
         with:
