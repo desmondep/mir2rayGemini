@@ -87,28 +87,37 @@ class Tun2SocksService(
 
     /**
      * Sends the file descriptor to the tun2socks process.
-     * Attempts to send the file descriptor multiple times if necessary.
+     * Runs synchronously on a background thread with retries.
+     * The FD must be received by tun2socks for traffic to flow through the VPN.
      */
     private fun sendFd() {
         val fd = vpnInterface.fileDescriptor
         val path = File(context.filesDir, "sock_path").absolutePath
         Log.i(AppConfig.TAG, "LocalSocket path: $path")
 
+        // Run FD sending synchronously on IO thread — not fire-and-forget.
+        // If this fails silently, traffic won't route through the VPN.
         CoroutineScope(Dispatchers.IO).launch {
             var tries = 0
-            while (true) try {
-                Thread.sleep(50L shl tries)
-                Log.i(AppConfig.TAG, "LocalSocket sendFd tries: $tries")
-                LocalSocket().use { localSocket ->
-                    localSocket.connect(LocalSocketAddress(path, LocalSocketAddress.Namespace.FILESYSTEM))
-                    localSocket.setFileDescriptorsForSend(arrayOf(fd))
-                    localSocket.outputStream.write(42)
+            var sent = false
+            while (!sent && tries <= 5) {
+                try {
+                    Thread.sleep(50L shl tries) // Exponential backoff: 50, 100, 200, 400, 800, 1600ms
+                    Log.i(AppConfig.TAG, "LocalSocket sendFd attempt: $tries")
+                    LocalSocket().use { localSocket ->
+                        localSocket.connect(LocalSocketAddress(path, LocalSocketAddress.Namespace.FILESYSTEM))
+                        localSocket.setFileDescriptorsForSend(arrayOf(fd))
+                        localSocket.outputStream.write(42)
+                    }
+                    sent = true
+                    Log.i(AppConfig.TAG, "FD sent successfully on attempt $tries")
+                } catch (e: Exception) {
+                    Log.e(AppConfig.TAG, "sendFd failed, attempt $tries: ${e.message}", e)
+                    tries += 1
                 }
-                break
-            } catch (e: Exception) {
-                Log.e(AppConfig.TAG, "Failed to send file descriptor, try: $tries", e)
-                if (tries > 5) break
-                tries += 1
+            }
+            if (!sent) {
+                Log.e(AppConfig.TAG, "CRITICAL: Failed to send FD after $tries attempts! VPN traffic will NOT work.")
             }
         }
     }

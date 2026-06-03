@@ -1556,21 +1556,48 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
         stopLiveStatsLoop()
         binding.layoutLiveStats.isVisible = true
         binding.tvLiveIp.text = "Checking..."
-        binding.tvLiveDns.text = MmkvManager.decodeSettingsString(AppConfig.PREF_VPN_DNS) ?: "System"
+        val dnsSetting = MmkvManager.decodeSettingsString(AppConfig.PREF_VPN_DNS) ?: AppConfig.DNS_VPN
+        binding.tvLiveDns.text = if (dnsSetting.isNotBlank()) dnsSetting else "System (${AppConfig.DNS_VPN})"
         
         var lastQueryTime = System.currentTimeMillis()
+        var lastTotalUp = 0L
+        var lastTotalDown = 0L
+        var consecutiveZeroReadings = 0
         
-        // Fetch Live IP in background once
+        // Fetch Live IP in background — use the HTTP proxy so it goes through VPN
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val ip = HttpUtil.getUrlContent("https://api.ipify.org/", 15000)
+                val httpPort = SettingsManager.getHttpPort()
+                Log.i(AppConfig.TAG, "Fetching Live IP via proxy port $httpPort")
+                val ip = HttpUtil.getUrlContent("https://api.ipify.org/", 15000, httpPort)
                 withContext(Dispatchers.Main) {
-                    if (!ip.isNullOrBlank()) binding.tvLiveIp.text = ip
-                    else binding.tvLiveIp.text = "Unknown"
+                    if (!ip.isNullOrBlank()) {
+                        binding.tvLiveIp.text = ip.trim()
+                        binding.tvLiveIp.setTextColor(android.graphics.Color.parseColor("#00FF00"))
+                        Log.i(AppConfig.TAG, "Live IP: $ip")
+                        updateProcessState("متصل • Live IP: ${ip.trim()}")
+                    } else {
+                        // Fallback: try without proxy
+                        withContext(Dispatchers.IO) {
+                            val ip2 = HttpUtil.getUrlContent("https://api.ip.sb/geoip", 15000, 0)
+                            withContext(Dispatchers.Main) {
+                                if (!ip2.isNullOrBlank()) {
+                                    binding.tvLiveIp.text = ip2.trim().take(100)
+                                    binding.tvLiveIp.setTextColor(android.graphics.Color.parseColor("#FFA500"))
+                                    Log.w(AppConfig.TAG, "Live IP (fallback): $ip2")
+                                } else {
+                                    binding.tvLiveIp.text = "Unknown"
+                                    binding.tvLiveIp.setTextColor(android.graphics.Color.parseColor("#FF4444"))
+                                }
+                            }
+                        }
+                    }
                 }
             } catch (e: Exception) {
+                Log.e(AppConfig.TAG, "Live IP fetch failed", e)
                 withContext(Dispatchers.Main) {
-                    binding.tvLiveIp.text = "Error"
+                    binding.tvLiveIp.text = "Error (check connection)"
+                    binding.tvLiveIp.setTextColor(android.graphics.Color.parseColor("#FF4444"))
                 }
             }
         }
@@ -1578,35 +1605,46 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
         liveStatsJob = lifecycleScope.launch(Dispatchers.IO) {
             while (isActive && mainViewModel.isRunning.value == true) {
                 val queryTime = System.currentTimeMillis()
-                val sinceLastQueryInSeconds = (queryTime - lastQueryTime) / 1000.0
+                val elapsedSeconds = ((queryTime - lastQueryTime) / 1000.0).coerceAtLeast(1.0)
                 
-                var totalUp = 0L
-                var totalDown = 0L
+                var totalUpNow = 0L
+                var totalDownNow = 0L
                 
-                val selectedIndex = mainViewModel.selectedList.firstOrNull() ?: 0
-                val currentGuid = mainViewModel.serverList
-                    .withIndex()
-                    .firstOrNull { it.index == selectedIndex }
-                    ?.value
-                val currentConfig = currentGuid?.let { guid -> mainViewModel.serversCache.firstOrNull { it.guid == guid } }
-
-                val outboundTags = mutableListOf<String>()
-                outboundTags.add(AppConfig.TAG_PROXY)
-                // In generic mode, it checks all tags. Let's just sum all:
+                // Query all relevant outbound tags to capture all traffic
                 val allTags = listOf(AppConfig.TAG_PROXY, AppConfig.TAG_DIRECT)
                 allTags.forEach {
                     val up = V2RayServiceManager.queryStats(it, AppConfig.UPLINK)
                     val down = V2RayServiceManager.queryStats(it, AppConfig.DOWNLINK)
-                    totalUp += up
-                    totalDown += down
+                    totalUpNow += up
+                    totalDownNow += down
                 }
 
-                val speedUp = (totalUp / sinceLastQueryInSeconds).toLong()
-                val speedDown = (totalDown / sinceLastQueryInSeconds).toLong()
+                // Calculate speed based on difference from last reading
+                // This handles cumulative counters more accurately
+                val diffUp = (totalUpNow - lastTotalUp).coerceAtLeast(0)
+                val diffDown = (totalDownNow - lastTotalDown).coerceAtLeast(0)
                 
+                val speedUp = (diffUp / elapsedSeconds).toLong()
+                val speedDown = (diffDown / elapsedSeconds).toLong()
+                
+                lastTotalUp = totalUpNow
+                lastTotalDown = totalDownNow
+                
+                if (diffUp == 0L && diffDown == 0L) {
+                    consecutiveZeroReadings++
+                } else {
+                    consecutiveZeroReadings = 0
+                }
+
                 withContext(Dispatchers.Main) {
                     binding.tvUlSpeed.text = speedUp.toLocalTrafficString() + "/s"
                     binding.tvDlSpeed.text = speedDown.toLocalTrafficString() + "/s"
+                    
+                    // If 10+ seconds of zero traffic while "connected", warn the user
+                    if (consecutiveZeroReadings >= 10 && mainViewModel.isRunning.value == true) {
+                        binding.tvLiveIp.text = "No traffic — check tunnel"
+                        binding.tvLiveIp.setTextColor(android.graphics.Color.parseColor("#FFA500"))
+                    }
                 }
 
                 lastQueryTime = queryTime
