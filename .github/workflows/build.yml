@@ -323,13 +323,25 @@ jobs:
 
     - name: Build libtun2socks
       run: |
-        # Verify if local compiled binaries exist specifically for libtun2socks and libhevtun
-        TUN2SOCKS_COUNT=$(find . -name "libtun2socks.so" | wc -l)
-        HEVTUN_COUNT=$(find . -name "libhevtun.so" | wc -l)
+        # Specifically check if we have the compiled libraries in our libs or imported/libs folder
+        LIBS_DIR=""
+        if [ -d "imported/libs" ]; then
+          LIBS_DIR="imported/libs"
+        elif [ -d "libs" ]; then
+          LIBS_DIR="libs"
+        fi
+
+        TUN2SOCKS_COUNT=0
+        HEVTUN_COUNT=0
+        if [ ! -z "$LIBS_DIR" ] && [ -d "$LIBS_DIR" ]; then
+          TUN2SOCKS_COUNT=$(find "$LIBS_DIR" -name "libtun2socks.so" 2>/dev/null | wc -l)
+          HEVTUN_COUNT=$(find "$LIBS_DIR" -name "libhevtun.so" 2>/dev/null | wc -l)
+        fi
+
         if [ "$TUN2SOCKS_COUNT" -gt 0 ] && [ "$HEVTUN_COUNT" -gt 0 ]; then
-          echo "Cached libtun2socks.so ($TUN2SOCKS_COUNT files) and libhevtun.so ($HEVTUN_COUNT files) are already present. Skipping compilation."
+          echo "Cached libtun2socks.so ($TUN2SOCKS_COUNT files) and libhevtun.so ($HEVTUN_COUNT files) are already present in $LIBS_DIR. Skipping compilation."
         else
-          echo "libtun2socks/libhevtun are not found or empty (even if cache was hit). Starting compilation..."
+          echo "libtun2socks/libhevtun not found or incomplete in $LIBS_DIR. Starting compilation..."
           SCRIPT_PATH=$(find . -name "compile-tun2socks.sh" | head -n 1)
           if [ ! -z "$SCRIPT_PATH" ]; then
             SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
@@ -374,8 +386,9 @@ jobs:
         fi
 
         if [ ! -z "$LIBS_SOURCE" ] && [ ! -z "$V2RAY_APP" ] && [ -d "$LIBS_SOURCE" ]; then
-          echo "Copying from $LIBS_SOURCE to $V2RAY_APP"
-          cp -r "$LIBS_SOURCE" "$V2RAY_APP/"
+          echo "Copying contents from $LIBS_SOURCE to $V2RAY_APP/libs"
+          mkdir -p "$V2RAY_APP/libs"
+          cp -r "$LIBS_SOURCE/." "$V2RAY_APP/libs/"
         else
           echo "Error: libs or V2rayNG/app not found!"
           exit 1
@@ -433,12 +446,23 @@ jobs:
 
     - name: Build libhysteria2
       run: |
-        # Check if hysteria libs exist and are not empty
-        HY_LIBS_COUNT=$(find . -name "libhysteria2.so" | wc -l)
+        # Specifically check if we have the compiled libraries in our hysteria/libs or imported/hysteria/libs folder
+        HY_LIBS_DIR=""
+        if [ -d "imported/hysteria/libs" ]; then
+          HY_LIBS_DIR="imported/hysteria/libs"
+        elif [ -d "hysteria/libs" ]; then
+          HY_LIBS_DIR="hysteria/libs"
+        fi
+
+        HY_LIBS_COUNT=0
+        if [ ! -z "$HY_LIBS_DIR" ] && [ -d "$HY_LIBS_DIR" ]; then
+          HY_LIBS_COUNT=$(find "$HY_LIBS_DIR" -name "libhysteria2.so" 2>/dev/null | wc -l)
+        fi
+
         if [ "$HY_LIBS_COUNT" -gt 0 ]; then
-          echo "Hysteria libs are already present ($HY_LIBS_COUNT files). Skipping compilation."
+          echo "Cached hysteria libs ($HY_LIBS_COUNT files) are already present in $HY_LIBS_DIR. Skipping compilation."
         else
-          echo "Hysteria libs not found or empty. Starting compilation..."
+          echo "Hysteria libs not found or empty in $HY_LIBS_DIR. Starting compilation..."
           HYSTERIA_SCRIPT=$(find . -name "libhysteria2.sh" | head -n 1)
           if [ ! -z "$HYSTERIA_SCRIPT" ]; then
             HYSTERIA_DIR=$(dirname "$HYSTERIA_SCRIPT")
@@ -482,8 +506,9 @@ jobs:
         fi
 
         if [ ! -z "$HY_LIBS_SOURCE" ] && [ ! -z "$V2RAY_APP" ] && [ -d "$HY_LIBS_SOURCE" ]; then
-          echo "Copying from $HY_LIBS_SOURCE to $V2RAY_APP"
-          cp -r "$HY_LIBS_SOURCE" "$V2RAY_APP/"
+          echo "Copying contents from $HY_LIBS_SOURCE to $V2RAY_APP/libs"
+          mkdir -p "$V2RAY_APP/libs"
+          cp -r "$HY_LIBS_SOURCE/." "$V2RAY_APP/libs/"
         else
           echo "Error: Hysteria libs or V2rayNG/app not found!"
           exit 1
