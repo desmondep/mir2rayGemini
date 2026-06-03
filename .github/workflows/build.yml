@@ -42,6 +42,52 @@ jobs:
         echo "=== Recursive Find (Depth 3) ==="
         find . -maxdepth 3 -not -path '*/.*'
 
+    - name: Ensure Submodules are Cloned
+      run: |
+        echo "=== Checking and cloning submodules if empty ==="
+        BASE_DIR="imported"
+        if [ ! -d "imported" ]; then
+          BASE_DIR="."
+        fi
+        echo "Submodule base directory is: $BASE_DIR"
+        
+        # 1. badvpn
+        if [ ! -d "$BASE_DIR/badvpn" ] || [ -z "$(ls -A "$BASE_DIR/badvpn" 2>/dev/null)" ]; then
+          echo "Cloning badvpn..."
+          rm -rf "$BASE_DIR/badvpn"
+          git clone --depth 1 https://github.com/XTLS/badvpn "$BASE_DIR/badvpn"
+        fi
+        
+        # 2. libancillary
+        if [ ! -d "$BASE_DIR/libancillary" ] || [ -z "$(ls -A "$BASE_DIR/libancillary" 2>/dev/null)" ]; then
+          echo "Cloning libancillary..."
+          rm -rf "$BASE_DIR/libancillary"
+          git clone --depth 1 https://github.com/shadowsocks/libancillary "$BASE_DIR/libancillary"
+        fi
+        
+        # 3. hev-socks5-tunnel
+        if [ ! -d "$BASE_DIR/hev-socks5-tunnel" ] || [ -z "$(ls -A "$BASE_DIR/hev-socks5-tunnel" 2>/dev/null)" ]; then
+          echo "Cloning hev-socks5-tunnel..."
+          rm -rf "$BASE_DIR/hev-socks5-tunnel"
+          git clone --depth 1 https://github.com/heiher/hev-socks5-tunnel "$BASE_DIR/hev-socks5-tunnel"
+        fi
+        
+        # 4. AndroidLibXrayLite
+        if [ ! -d "$BASE_DIR/AndroidLibXrayLite" ] || [ -z "$(ls -A "$BASE_DIR/AndroidLibXrayLite" 2>/dev/null)" ]; then
+          echo "Cloning AndroidLibXrayLite..."
+          rm -rf "$BASE_DIR/AndroidLibXrayLite"
+          git clone --depth 1 https://github.com/2dust/AndroidLibXrayLite "$BASE_DIR/AndroidLibXrayLite"
+        fi
+        
+        # 5. hysteria
+        if [ ! -d "$BASE_DIR/hysteria" ] || [ -z "$(ls -A "$BASE_DIR/hysteria" 2>/dev/null)" ]; then
+          echo "Cloning hysteria..."
+          rm -rf "$BASE_DIR/hysteria"
+          git clone --depth 1 https://github.com/apernet/hysteria "$BASE_DIR/hysteria"
+        fi
+        
+        echo "=== Finished Submodule Preparation ==="
+
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3.2.0
       with:
