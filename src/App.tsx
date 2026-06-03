@@ -1,199 +1,505 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import { useState, useEffect } from 'react';
-import { Power, RefreshCcw, Zap, SkipForward, Server, Shield, Activity, Share2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { useState, useEffect, useRef } from 'react';
+import { Power, RefreshCcw, Zap, SkipForward, Server, Shield, Activity, Share2, Plus, Download, ChevronRight, Globe, ArrowUp, ArrowDown } from 'lucide-react';
 
 // Types
 interface VpnConfig {
   id: string;
   name: string;
-  type: string;
   ping: number | null;
-  status: 'untested' | 'good' | 'bad';
+}
+
+interface DnsTestResult {
+  server: string;
+  speed: number;
+  jitter: number;
+  accuracy: number;
 }
 
 export default function App() {
   const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [configs, setConfigs] = useState<VpnConfig[]>([]);
   const [currentConfigIndex, setCurrentConfigIndex] = useState(0);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [processMessage, setProcessMessage] = useState('');
   
+  const [isGiving, setIsGiving] = useState(false);
+  const [giveProgress, setGiveProgress] = useState(0);
+  
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [optimizeProgress, setOptimizeProgress] = useState(0);
+  
+  const [isTestingDNS, setIsTestingDNS] = useState(false);
+  const [dnsProgress, setDnsProgress] = useState(0);
+  const [showSourceModal, setShowSourceModal] = useState(false);
+  const [showDnsResults, setShowDnsResults] = useState(false);
+  const [dnsResults, setDnsResults] = useState<DnsTestResult[]>([]);
+  const [appliedDns, setAppliedDns] = useState<string>("System Default");
+
+  const giveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hasLongPressed = useRef(false);
+  
+  const [processState, setProcessState] = useState('Ready');
+
   const currentConfig = configs.length > 0 ? configs[currentConfigIndex] : null;
 
-  // Simulate Giving New Configs (fetch sub)
-  const handleGiveNewConfigs = () => {
-    setIsProcessing(true);
-    setProcessMessage('در حال دریافت و تست کانفیگ‌های جدید...');
-    
-    // Simulate network delay
-    setTimeout(() => {
-      const mockConfigs: VpnConfig[] = [
-        { id: '1', name: '🇩🇪 Germany-VIP (Auto)', type: 'vless', ping: 120, status: 'good' },
-        { id: '2', name: '🇫🇷 France-Premium', type: 'vmess', ping: 145, status: 'good' },
-        { id: '3', name: '🇳🇱 Netherlands-Fast', type: 'trojan', ping: 180, status: 'good' },
-        { id: '4', name: '🇺🇸 USA-Tunnel', type: 'vless', ping: 250, status: 'untested' },
-        { id: '5', name: '🇬🇧 UK-Core', type: 'vmess', ping: 512, status: 'bad' },
-      ];
-      setConfigs(mockConfigs);
-      setCurrentConfigIndex(0);
-      setIsProcessing(false);
-    }, 2000);
-  };
+  useEffect(() => {
+    setProcessState(configs.length === 0 ? 'Ready' : `${configs.length} Configs available`);
+  }, [configs.length]);
 
-  // Simulate Optimize
-  const handleOptimize = () => {
-    if (configs.length === 0) return;
-    setIsProcessing(true);
-    setProcessMessage('در حال پینگ‌گیری موازی و بهینه‌سازی...');
+  const handleGiveConfigs = (source = 'Miraali (default)') => {
+    setShowSourceModal(false);
+    if (isGiving || isOptimizing || isConnecting || isConnected || isTestingDNS) return;
+    setIsGiving(true);
+    setProcessState(`Fetching from ${source}...`);
+    setGiveProgress(15);
     
     setTimeout(() => {
-      const optimized = [...configs]
-        .map(c => ({
-          ...c,
-          ping: c.ping ? c.ping - Math.floor(Math.random() * 30) : 100 + Math.floor(Math.random() * 200),
-        }))
-        .filter(c => (c.ping || 0) < 500)
-        .sort((a, b) => (a.ping || 999) - (b.ping || 999));
-        
-      setConfigs(optimized);
-      setCurrentConfigIndex(0);
-      setIsProcessing(false);
-    }, 1500);
+      setProcessState('Removing duplicates...');
+      setGiveProgress(35);
+    }, 800);
+    
+    setTimeout(() => {
+      setProcessState('Testing latency...');
+      setGiveProgress(60);
+    }, 1600);
+
+    setTimeout(() => {
+      setProcessState('Testing download speed...');
+      setGiveProgress(80);
+    }, 2800);
+
+    // new config logic
+    setTimeout(() => {
+      const newConfigs = Array.from({ length: 5 }).map((_, i) => ({
+        id: `config-${Date.now()}-${i}`,
+        name: `Server-${Math.random().toString(36).substring(7)}`,
+        ping: Math.floor(Math.random() * 400) + 50,
+      }));
+      setConfigs(prev => [...prev, ...newConfigs]);
+      setProcessState(`Imported: 5 | Tested: 5 | Download Pass: 5`);
+      setGiveProgress(100);
+      
+      setTimeout(() => {
+        setIsGiving(false);
+        setGiveProgress(0);
+        setProcessState(`${configs.length + 5} Configs ready`);
+      }, 1500);
+    }, 4200);
   };
 
-  const handleNextConfig = () => {
-    if (configs.length > 0) {
-      setCurrentConfigIndex((prev) => (prev + 1) % configs.length);
+  const handleGivePointerDown = () => {
+    hasLongPressed.current = false;
+    giveTimerRef.current = setTimeout(() => {
+      hasLongPressed.current = true;
+      setShowSourceModal(true);
+    }, 600);
+  };
+
+  const handleGivePointerUp = () => {
+    if (giveTimerRef.current) {
+      clearTimeout(giveTimerRef.current);
+      giveTimerRef.current = null;
     }
   };
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4 font-sans dir-rtl">
-      {/* Background ambient accents */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-500/10 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-500/10 rounded-full blur-[120px]" />
-      </div>
+  const handleGiveClick = () => {
+    if (hasLongPressed.current) {
+      hasLongPressed.current = false;
+      return;
+    }
+    handleGiveConfigs();
+  };
 
-      <div className="w-full max-w-md relative z-10 space-y-8">
+  const handleTestDNS = () => {
+    if (isGiving || isOptimizing || isConnecting || isTestingDNS) return;
+    setIsTestingDNS(true);
+    
+    setProcessState('Connecting to global & regional DNS servers...');
+    setDnsProgress(15);
+
+    setTimeout(() => {
+      setProcessState('Testing resolution speed on top domains...');
+      setDnsProgress(40);
+    }, 1200);
+
+    setTimeout(() => {
+      setProcessState('Calculating jitter & verifying record accuracy...');
+      setDnsProgress(75);
+    }, 2500);
+
+    setTimeout(() => {
+      const mockResults: DnsTestResult[] = [
+        { server: "Electro (IR)", speed: Math.floor(Math.random() * 20) + 15, jitter: Math.floor(Math.random() * 5) + 1, accuracy: 100 },
+        { server: "Cloudflare", speed: Math.floor(Math.random() * 40) + 30, jitter: Math.floor(Math.random() * 10) + 5, accuracy: 100 },
+        { server: "Radar (IR)", speed: Math.floor(Math.random() * 25) + 20, jitter: Math.floor(Math.random() * 8) + 2, accuracy: 100 },
+        { server: "Google", speed: Math.floor(Math.random() * 50) + 40, jitter: Math.floor(Math.random() * 15) + 8, accuracy: 100 },
+        { server: "Quad9", speed: Math.floor(Math.random() * 60) + 45, jitter: Math.floor(Math.random() * 12) + 6, accuracy: 100 },
+        { server: "403.online", speed: Math.floor(Math.random() * 30) + 20, jitter: Math.floor(Math.random() * 10) + 2, accuracy: 100 },
+        { server: "AdGuard", speed: Math.floor(Math.random() * 70) + 50, jitter: Math.floor(Math.random() * 15) + 10, accuracy: 100 },
+        { server: "OpenDNS", speed: Math.floor(Math.random() * 60) + 50, jitter: Math.floor(Math.random() * 25) + 12, accuracy: 80 },
+        { server: "NextDNS", speed: Math.floor(Math.random() * 80) + 60, jitter: Math.floor(Math.random() * 20) + 15, accuracy: 100 }
+      ].sort((a,b) => a.speed - b.speed);
+      
+      setDnsResults(mockResults);
+      setDnsProgress(100);
+      setTimeout(() => {
+        setIsTestingDNS(false);
+        setDnsProgress(0);
+        setShowDnsResults(true);
+        setProcessState(`DNS Tests complete. Select a server.`);
+      }, 1000);
+    }, 4000);
+  };
+
+  const handleOptimize = () => {
+    if (configs.length === 0) {
+      setProcessState('List empty. Please Give Configs first.');
+      return;
+    }
+    if (isGiving || isOptimizing || isConnecting || isTestingDNS) return;
+    
+    setIsOptimizing(true);
+    setProcessState('Preparing optimization...');
+    setOptimizeProgress(25);
+
+    setTimeout(() => {
+      setProcessState('Testing real latency...');
+      setOptimizeProgress(50);
+    }, 1000);
+
+    setTimeout(() => {
+      setProcessState('Testing download speed...');
+      setOptimizeProgress(75);
+    }, 2000);
+
+    setTimeout(() => {
+      const optimized = [...configs].map(c => ({
+        ...c,
+        ping: Math.floor(Math.random() * 300) + 50
+      })).sort((a, b) => a.ping! - b.ping!);
+      setConfigs(optimized);
+      setCurrentConfigIndex(0);
+      
+      setProcessState(`Tested: ${configs.length} | Download Pass: ${configs.length}`);
+      setOptimizeProgress(100);
+      
+      setTimeout(() => {
+        setIsOptimizing(false);
+        setOptimizeProgress(0);
+        setProcessState(`Optimization complete. ${configs.length} Configs`);
+      }, 1500);
+    }, 3000);
+  };
+
+  const toggleConnect = () => {
+    if (isGiving || isOptimizing || isConnecting || isTestingDNS) return;
+    
+    if (isConnected) {
+      setProcessState(`${configs.length} Configs ready`);
+      setIsConnected(false);
+    } else {
+      if (configs.length === 0) {
+        setProcessState('List empty. Please Give Configs first.');
+        return;
+      }
+      setIsConnecting(true);
+      setProcessState('Connecting...');
+      
+      setTimeout(() => {
+        setIsConnecting(false);
+        setIsConnected(true);
+        setProcessState(`Connected • Ping: ${currentConfig?.ping || 'Unknown'}ms`);
+      }, 1500);
+    }
+  };
+
+  const handleNextConfig = () => {
+    if (configs.length === 0) return;
+    if (configs.length === 1) {
+      setProcessState('No other configs available to switch.');
+      return;
+    }
+    setProcessState('Switching to next config...');
+    setTimeout(() => {
+      setCurrentConfigIndex(prev => (prev + 1) % configs.length);
+      setProcessState(`Connected • Ping: ${configs[(currentConfigIndex + 1) % configs.length].ping || 'Unknown'}ms`);
+    }, 800);
+  };
+
+  return (
+    <div className="min-h-[100dvh] flex items-center justify-center p-4">
+      {/* Background blobs for premium feel */}
+      <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-accent/20 rounded-full blur-[120px] pointer-events-none opacity-50" />
+      <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-success/10 rounded-full blur-[100px] pointer-events-none opacity-50" />
+      
+      {/* Main App Container */}
+      <div className="relative w-full max-w-[400px] bg-surface-dark/80 backdrop-blur-xl border border-border-dark rounded-3xl overflow-hidden shadow-2xl flex flex-col p-6">
         
         {/* Header */}
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center p-3 bg-indigo-500/20 rounded-2xl mb-4 border border-indigo-500/30 shadow-[0_0_30px_rgba(99,102,241,0.2)]">
-            <Shield className="w-8 h-8 text-indigo-400" />
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center border border-accent/20">
+              <Shield className="w-4 h-4 text-accent" />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-gray-100 to-gray-400">Mir2Ray</h1>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">Mir2Ray <span className="text-indigo-400">Web</span></h1>
-          <p className="text-slate-400 text-sm">نسخه تحت وب داشبورد Mir2Ray (سه‌دکمه‌ای)</p>
+          <div className="flex items-center space-x-2 bg-surface-hover px-3 py-1.5 rounded-full border border-border-dark shadow-xs">
+            <Server className="w-3.5 h-3.5 text-gray-400" />
+            <span className="text-xs font-medium text-gray-300">{configs.length}</span>
+          </div>
         </div>
 
-        {/* Main Connection Card */}
-        <motion.div 
-          layout
-          className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden"
-        >
-          {isConnected && (
-            <motion.div 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }}
-              className="absolute inset-0 bg-gradient-to-br from-teal-500/10 to-transparent pointer-events-none" 
-            />
-          )}
-
-          <div className="flex flex-col items-center space-y-8 pt-4">
+        {/* Main Status Area */}
+        <div className="flex flex-col items-center justify-center py-8">
+          <button
+            onClick={toggleConnect}
+            disabled={isGiving || isOptimizing || isConnecting || isTestingDNS}
+            className={`relative w-40 h-40 rounded-full flex items-center justify-center transition-all duration-500 hover:scale-[1.02] active:scale-[0.98] ${
+              isConnected 
+                ? 'bg-success/10 shadow-[0_0_40px_rgba(16,185,129,0.2)]' 
+                : isConnecting
+                ? 'bg-accent/10 shadow-[0_0_40px_rgba(59,130,246,0.2)] animate-pulse'
+                : 'bg-surface-hover shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-border-dark'
+            }`}
+          >
+            {/* Status Rings */}
+            {isConnected && (
+              <div className="absolute inset-0 rounded-full border-2 border-success animate-[spin_4s_linear_infinite] opacity-30" style={{ borderTopColor: 'transparent', borderLeftColor: 'transparent' }} />
+            )}
+            {isConnecting && (
+              <div className="absolute inset-0 rounded-full border-2 border-accent animate-spin opacity-50" style={{ borderTopColor: 'transparent' }} />
+            )}
             
-            {/* Status Indicator */}
-            <div className="flex flex-col items-center gap-2">
-              <span className="text-sm font-medium tracking-wider uppercase text-slate-500">وضعیت اتصال</span>
-              <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-950 border border-slate-800">
-                <div className={`w-2 h-2 rounded-full shadow-[0_0_8px_currentColor] ${isConnected ? 'bg-teal-400 text-teal-400' : 'bg-rose-500 text-rose-500'}`} />
-                <span className={`text-sm font-medium ${isConnected ? 'text-teal-400' : 'text-rose-500'}`}>
-                  {isConnected ? 'متصل' : 'قطع'}
-                </span>
+            <Power className={`w-14 h-14 transition-colors duration-500 ${
+              isConnected ? 'text-success' : isConnecting ? 'text-accent' : 'text-gray-400'
+            }`} />
+          </button>
+          
+          <div className="mt-8 text-center space-y-1">
+            <h2 className={`text-2xl font-bold tracking-tight transition-colors duration-300 ${
+              isConnected ? 'text-success' : 'text-gray-100'
+            }`}>
+              {isConnected ? 'Connected' : isConnecting ? 'Connecting...' : 'Disconnected'}
+            </h2>
+            <p className="text-sm text-gray-400 font-medium h-5">
+              {processState}
+            </p>
+          </div>
+
+          {isConnected && (
+            <div className="w-full mt-6 bg-[#101A10] border border-border-dark rounded-2xl p-4 shadow-inner animate-in fade-in slide-in-from-bottom-4 duration-300">
+              <div className="flex justify-between items-center mb-3">
+                <div className="text-left">
+                  <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">Live IP</div>
+                  <div className="text-xs font-bold text-success flex items-center space-x-1">
+                    <Globe className="w-3 h-3 opacity-70" />
+                    <span>{Math.floor(Math.random() * 255) + 1}.{Math.floor(Math.random() * 255)}.12.8</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">Active DNS</div>
+                  <div className="text-xs font-bold text-success flex items-center space-x-1 justify-end">
+                    <Server className="w-3 h-3 opacity-70" />
+                    <span>{appliedDns}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-[#152215] rounded-xl p-3 flex justify-between items-center text-sm font-mono border border-success/10">
+                <div className="flex items-center text-gray-300 space-x-2 w-1/2">
+                  <div className="w-6 h-6 rounded-md bg-success/10 flex items-center justify-center">
+                    <ArrowDown className="w-3 h-3 text-success" />
+                  </div>
+                  <span className="text-xs">{Math.floor(Math.random() * 500) + 120}.5 KB/s</span>
+                </div>
+                <div className="w-[1px] h-6 bg-border-dark mx-2" />
+                <div className="flex items-center text-gray-300 space-x-2 w-1/2 justify-end">
+                  <span className="text-xs">{Math.floor(Math.random() * 100) + 10}.2 KB/s</span>
+                  <div className="w-6 h-6 rounded-md bg-accent/10 flex items-center justify-center">
+                    <ArrowUp className="w-3 h-3 text-accent" />
+                  </div>
+                </div>
               </div>
             </div>
-
-            {/* Big Power Button */}
-            <button
-              disabled={configs.length === 0}
-              onClick={() => setIsConnected(!isConnected)}
-              className={`relative group w-32 h-32 rounded-full flex items-center justify-center transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed
-                ${isConnected 
-                  ? 'bg-teal-500/20 border-2 border-teal-500/50 text-teal-400 hover:bg-teal-500/30 shadow-[0_0_40px_rgba(20,184,166,0.3)]' 
-                  : 'bg-slate-800/50 border-2 border-slate-700 text-slate-400 hover:bg-slate-800 hover:border-slate-600'}
-              `}
-            >
-              <Power className={`w-12 h-12 transition-transform duration-300 ${isConnected ? 'scale-110 drop-shadow-[0_0_10px_rgba(20,184,166,0.8)]' : ''}`} />
-            </button>
-
-            {/* Current Config Info */}
-            <div className="w-full text-center space-y-1">
-              {currentConfig ? (
-                <>
-                  <p className="font-semibold text-lg text-slate-200" dir="ltr">{currentConfig.name}</p>
-                  <p className="text-sm text-slate-500 flex items-center justify-center gap-1">
-                    <Activity className="w-3 h-3" /> {currentConfig.ping}ms | {currentConfig.type.toUpperCase()}
-                  </p>
-                </>
-              ) : (
-                <p className="text-slate-500">کانفیگی موجود نیست. دکمه دریافت را بزنید.</p>
-              )}
-            </div>
-
-          </div>
-        </motion.div>
-
-        {/* The Three Buttons UI (Give, Optimize, Next) */}
-        <div className="grid grid-cols-3 gap-3">
-          
-          <button 
-            onClick={handleGiveNewConfigs}
-            disabled={isProcessing}
-            className="flex flex-col items-center justify-center gap-2 bg-indigo-500/10 hover:bg-indigo-500/20 disabled:opacity-50 border border-indigo-500/20 rounded-2xl p-4 transition-colors"
-          >
-            <RefreshCcw className={`w-6 h-6 text-indigo-400 ${isProcessing && 'animate-spin'}`} />
-            <span className="text-xs font-medium text-indigo-300">دریافت کانفیگ</span>
-          </button>
-
-          <button 
-            onClick={handleOptimize}
-            disabled={configs.length === 0 || isProcessing}
-            className="flex flex-col items-center justify-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-50 border border-amber-500/20 rounded-2xl p-4 transition-colors"
-          >
-            <Zap className="w-6 h-6 text-amber-400" />
-            <span className="text-xs font-medium text-amber-300">بهینه‌سازی</span>
-          </button>
-
-          <button 
-            onClick={handleNextConfig}
-            disabled={configs.length === 0}
-            className="flex flex-col items-center justify-center gap-2 bg-slate-800/80 hover:bg-slate-700 disabled:opacity-50 border border-slate-700 rounded-2xl p-4 transition-colors"
-          >
-            <SkipForward className="w-6 h-6 text-slate-300" />
-            <span className="text-xs font-medium text-slate-400 text-center">سرور بعدی</span>
-          </button>
-          
+          )}
         </div>
 
-        {/* Logs/Process Message */}
-        <AnimatePresence>
-          {isProcessing && (
-            <motion.div 
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="text-center text-sm text-indigo-400 bg-indigo-950/50 py-2 rounded-lg border border-indigo-900/50"
+        {/* Action Grid */}
+        <div className="grid grid-cols-2 gap-3 mt-6">
+          {/* Give Configs Button */}
+          <button
+            onPointerDown={handleGivePointerDown}
+            onPointerUp={handleGivePointerUp}
+            onPointerLeave={handleGivePointerUp}
+            onClick={handleGiveClick}
+            disabled={isGiving || isConnecting || isOptimizing || isConnected || isTestingDNS}
+            className="relative overflow-hidden group bg-surface-hover border border-border-dark hover:border-accent/30 rounded-2xl p-4 flex flex-col items-start justify-between h-28 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center">
+              <Download className="w-4 h-4 text-blue-400" />
+            </div>
+            <div className="text-left">
+              <span className="block text-sm font-semibold text-gray-200">Get Configs</span>
+              <span className="block text-xs text-gray-500 mt-0.5">Fetch latest</span>
+            </div>
+            {isGiving && (
+              <div className="absolute bottom-0 left-0 h-1 bg-accent transition-all duration-300 shadow-[0_0_10px_rgba(59,130,246,0.8)]" style={{ width: `${giveProgress}%` }} />
+            )}
+          </button>
+
+          {/* Optimize Button */}
+          <button
+            onClick={handleOptimize}
+            disabled={isGiving || isConnecting || isOptimizing || isTestingDNS}
+            className="relative overflow-hidden group bg-surface-hover border border-border-dark hover:border-success/30 rounded-2xl p-4 flex flex-col items-start justify-between h-28 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center">
+              <Zap className="w-4 h-4 text-emerald-400" />
+            </div>
+            <div className="text-left">
+              <span className="block text-sm font-semibold text-gray-200">Optimize</span>
+              <span className="block text-xs text-gray-500 mt-0.5">Filter & speedtest</span>
+            </div>
+            {isOptimizing && (
+              <div className="absolute bottom-0 left-0 h-1 bg-success transition-all duration-300 shadow-[0_0_10px_rgba(16,185,129,0.8)]" style={{ width: `${optimizeProgress}%` }} />
+            )}
+          </button>
+        </div>
+
+        {/* Secondary Actions */}
+        <div className="space-y-2 mt-4">
+          {isConnected && (
+            <button
+              onClick={handleNextConfig}
+              className="w-full flex items-center justify-between p-4 bg-surface-hover border border-border-dark hover:border-gray-600 rounded-xl transition-all"
             >
-              {processMessage}
-            </motion.div>
+              <div className="flex items-center space-x-3">
+                <SkipForward className="w-5 h-5 text-gray-400" />
+                <span className="text-sm font-medium text-gray-200">Switch to Next Config</span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-500" />
+            </button>
           )}
-        </AnimatePresence>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => {
+                if (isGiving || isOptimizing || isConnecting || isTestingDNS) return;
+                setProcessState('Importing config from clipboard...');
+                setTimeout(() => {
+                  const newConfigs = Array.from({ length: 1 }).map((_, i) => ({
+                    id: `imported-${Date.now()}-${i}`,
+                    name: `Custom-${Math.random().toString(36).substring(7)}`,
+                    ping: null,
+                  }));
+                  setConfigs(prev => [...prev, ...newConfigs]);
+                  setProcessState('Config imported successfully!');
+                }, 800);
+              }}
+              disabled={isGiving || isConnecting || isOptimizing || isTestingDNS}
+              className="flex items-center justify-center space-x-2 p-3 bg-surface-hover border border-border-dark rounded-xl hover:bg-border-dark transition-colors disabled:opacity-50"
+            >
+              <Plus className="w-4 h-4 text-gray-400" />
+              <span className="text-xs font-medium text-gray-300">Import</span>
+            </button>
+
+            <button
+              onClick={handleTestDNS}
+              disabled={isGiving || isConnecting || isOptimizing || isTestingDNS}
+              className="relative overflow-hidden flex items-center justify-center space-x-2 p-3 bg-surface-hover border border-border-dark rounded-xl hover:bg-border-dark transition-colors disabled:opacity-50"
+            >
+              <Activity className="w-4 h-4 text-gray-400" />
+              <span className="text-xs font-medium text-gray-300">Test DNS</span>
+              {isTestingDNS && (
+                <div className="absolute inset-0 bg-white/5 shadow-[inset_0_0_10px_rgba(255,255,255,0.1)]" style={{ width: `${dnsProgress}%` }} />
+              )}
+            </button>
+          </div>
+        </div>
 
       </div>
+
+      {/* Source Selection Modal */}
+      {showSourceModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4 sm:p-0 animate-in fade-in duration-200">
+          <div className="bg-surface-dark border border-border-dark p-6 rounded-3xl w-full max-w-[320px] shadow-2xl animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95">
+            <h3 className="text-gray-100 font-semibold mb-4 text-base">Select Config Source</h3>
+            <div className="space-y-2.5">
+              {['List 1: Miraali', 'List 2: V2ray-config', 'List 3: 5ubscrpt10n', 'All: All combined'].map(source => (
+                <button
+                  key={source}
+                  onClick={() => handleGiveConfigs(source)}
+                  className="w-full h-11 bg-surface-hover text-gray-200 hover:bg-border-dark hover:text-white rounded-xl text-sm font-medium transition-colors"
+                >
+                  {source}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowSourceModal(false)}
+              className="w-full h-11 mt-4 text-gray-400 hover:text-gray-200 text-sm font-medium transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* DNS Results Modal */}
+      {showDnsResults && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-surface-dark border border-border-dark p-6 rounded-3xl w-full max-w-[400px] shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-gray-100 font-semibold text-lg">DNS Test Summary</h3>
+              <div className="text-xs text-gray-400">Click a row to apply</div>
+            </div>
+            
+            <div className="overflow-hidden rounded-xl border border-border-dark">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-surface-hover text-gray-400 text-xs uppercase font-medium">
+                  <tr>
+                    <th className="px-4 py-3">Server</th>
+                    <th className="px-4 py-3 text-right">Speed</th>
+                    <th className="px-4 py-3 text-right">Jitter</th>
+                    <th className="px-4 py-3 text-right">Accuracy</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-dark">
+                  {dnsResults.map((result, idx) => (
+                    <tr 
+                      key={result.server} 
+                      onClick={() => {
+                        setAppliedDns(result.server);
+                        setShowDnsResults(false);
+                        setProcessState(`Applied DNS: ${result.server}`);
+                      }}
+                      className="cursor-pointer hover:bg-surface-hover transition-colors"
+                    >
+                      <td className="px-4 py-3 font-medium text-gray-200 flex items-center space-x-2">
+                        {appliedDns === result.server && <Shield className="w-3 h-3 text-success" />}
+                        <span className={appliedDns === result.server ? "text-success" : ""}>{result.server}</span>
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-300">{result.speed}ms</td>
+                      <td className="px-4 py-3 text-right text-gray-300">{result.jitter}ms</td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={`px-2 py-0.5 rounded-full text-xs ${result.accuracy === 100 ? 'bg-success/10 text-success' : 'bg-orange-500/10 text-orange-400'}`}>
+                          {result.accuracy}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <button
+              onClick={() => setShowDnsResults(false)}
+              className="w-full h-11 mt-6 bg-surface-hover border border-border-dark text-gray-200 hover:bg-border-dark rounded-xl text-sm font-medium transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
