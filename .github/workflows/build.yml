@@ -88,7 +88,7 @@ jobs:
         	NDK_OUT=$TMPDIR/tmp \
         	APP_SHORT_COMMANDS=false LOCAL_SHORT_COMMANDS=false -B -j4
         mkdir -p "$__dir/libs"
-        cp -r "$TMPDIR/libs/"* "$__dir/libs/"
+        cp -r "$TMPDIR/libs/." "$__dir/libs/"
         popd
         rm -rf $TMPDIR
         EOF
@@ -125,7 +125,7 @@ jobs:
             "APP_CFLAGS=-O3 -DPKGNAME=com/v2ray/ang/service" \
             "APP_LDFLAGS=-Wl,--build-id=none -Wl,--hash-style=gnu"
         mkdir -p "$__dir/libs"
-        cp -r "$TMPDIR/libs/"* "$__dir/libs/"
+        cp -r "$TMPDIR/libs/." "$__dir/libs/"
         popd
         rm -rf $TMPDIR
         EOF
@@ -362,7 +362,8 @@ jobs:
             chmod +x compile-tun2socks.sh compile-hevtun.sh
             sed -i 's/\r$//' compile-tun2socks.sh
             sed -i 's/\r$//' compile-hevtun.sh
-            ./compile-tun2socks.sh && ./compile-hevtun.sh
+            ./compile-tun2socks.sh
+            ./compile-hevtun.sh
             popd
           else
             echo "Error: compile-tun2socks.sh not found!"
