@@ -40,6 +40,7 @@ import com.v2ray.ang.extension.toast
 import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MigrateManager
+import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.DnsTestManager
 import com.v2ray.ang.handler.PluginServiceManager
@@ -1602,21 +1603,18 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
                         Log.i(AppConfig.TAG, "Live IP: $ip")
                         updateProcessState("متصل • Live IP: ${ip.trim()}")
                     } else {
-                        // Fallback: try without proxy
-                        withContext(Dispatchers.IO) {
-                            val ip2 = HttpUtil.getUrlContent("https://api.ip.sb/geoip", 15000, 0)
-                            withContext(Dispatchers.Main) {
+                        // Fallback: try without proxy (already on IO dispatcher)
+                        val ip2 = HttpUtil.getUrlContent("https://api.ip.sb/geoip", 15000, 0)
+                        withContext(Dispatchers.Main) {
                                 if (!ip2.isNullOrBlank()) {
                                     binding.tvLiveIp.text = ip2.trim().take(100)
                                     binding.tvLiveIp.setTextColor(android.graphics.Color.parseColor("#FFA500"))
-                                    Log.w(AppConfig.TAG, "Live IP (fallback): $ip2")
-                                } else {
-                                    binding.tvLiveIp.text = "Unknown"
-                                    binding.tvLiveIp.setTextColor(android.graphics.Color.parseColor("#FF4444"))
-                                }
+                                Log.w(AppConfig.TAG, "Live IP (fallback): $ip2")
+                            } else {
+                                binding.tvLiveIp.text = "Unknown"
+                                binding.tvLiveIp.setTextColor(android.graphics.Color.parseColor("#FF4444"))
                             }
                         }
-                    }
                 }
             } catch (e: Exception) {
                 Log.e(AppConfig.TAG, "Live IP fetch failed", e)
