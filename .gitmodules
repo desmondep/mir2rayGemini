@@ -1,0 +1,19 @@
+[submodule "imported/hysteria"]
+	path = imported/hysteria
+	url = https://github.com/apernet/hysteria
+
+[submodule "imported/AndroidLibXrayLite"]
+	path = imported/AndroidLibXrayLite
+	url = https://github.com/2dust/AndroidLibXrayLite
+
+[submodule "imported/badvpn"]
+	path = imported/badvpn
+	url = https://github.com/XTLS/badvpn
+
+[submodule "imported/libancillary"]
+	path = imported/libancillary
+	url = https://github.com/shadowsocks/libancillary
+
+[submodule "imported/hev-socks5-tunnel"]
+	path = imported/hev-socks5-tunnel
+	url = https://github.com/heiher/hev-socks5-tunnel
