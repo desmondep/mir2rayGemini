@@ -40,7 +40,6 @@ import com.v2ray.ang.extension.toast
 import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MigrateManager
-import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.DnsTestManager
 import com.v2ray.ang.handler.PluginServiceManager
@@ -84,9 +83,6 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
                 pendingConnectAttempt = false
                 binding.pbConnect.isVisible = false
                 stopConnectPulse()
-                binding.pbConnectingRing.isVisible = false
-                binding.ringConnected.isVisible = false
-                binding.ivPowerIcon.setColorFilter(ColorStateList.valueOf(ContextCompat.getColor(this, R.color.neon_import_icon)).defaultColor)
                 updateProcessState(getString(R.string.neon_connect_failed))
             }
         } else {
@@ -224,19 +220,13 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
             }
         }
 
-        binding.btnImport.setOnClickListener {
-            lifecycleScope.launch {
-                importClipboard()
-            }
-        }
-
         binding.btnConnect.setOnClickListener {
             lifecycleScope.launch {
                 toggleConnect()
             }
         }
 
-        binding.layoutNextConfig.setOnClickListener {
+        binding.btnNextConfig.setOnClickListener {
             lifecycleScope.launch {
                 skipToNextConfig()
             }
@@ -358,18 +348,11 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
                 setTestState(getString(R.string.connection_connected))
                 binding.layoutTest.isFocusable = true
                 binding.btnConnect.text = getString(R.string.neon_disconnect)
-                binding.btnConnect.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.neon_circle_glow_green))
-                binding.ringConnected.isVisible = true
-                binding.ivPowerIcon.setColorFilter(ContextCompat.getColor(this, R.color.neon_circle_glow_green))
                 binding.pbConnect.isVisible = false
                 stopConnectPulse()
-                binding.pbConnectingRing.isVisible = false
-                binding.ringConnected.isVisible = true
                 pendingConnectAttempt = false
-                binding.btnConnect.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.neon_circle_glow_green))
-                binding.ivPowerIcon.setColorFilter(ContextCompat.getColor(this, R.color.neon_circle_glow_green))
                 updateProcessState(getString(R.string.neon_connected))
-                binding.layoutNextConfig.isVisible = true
+                binding.btnNextConfig.isVisible = true
                 if (mainViewModel.isRunning.value == true) {
                     scheduleNextAutoPingCheck(AUTO_PING_STABILIZATION_MS)
                     startPingLoop()
@@ -403,10 +386,7 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
                 setTestState(getString(R.string.connection_not_connected))
                 binding.layoutTest.isFocusable = false
                 binding.btnConnect.text = getString(R.string.neon_connect)
-                binding.ringConnected.isVisible = false
-                binding.pbConnectingRing.isVisible = false
-                binding.ivPowerIcon.setColorFilter(ColorStateList.valueOf(ContextCompat.getColor(this, R.color.neon_import_icon)).defaultColor)
-                binding.layoutNextConfig.isVisible = false
+                binding.btnNextConfig.isVisible = false
                 stopPingLoop()
                 stopLiveStatsLoop()
                 if (pendingConnectAttempt) {
@@ -890,7 +870,7 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
             return
         }
 
-        binding.layoutNextConfig.isEnabled = false
+        binding.btnNextConfig.isEnabled = false
         updateProcessState("درحال سوییچ به کانفیگ بعدی…")
 
         try {
@@ -930,7 +910,7 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
             scheduleNextAutoPingCheck(AUTO_PING_STABILIZATION_MS)
             restartV2Ray()
         } finally {
-            binding.layoutNextConfig.isEnabled = true
+            binding.btnNextConfig.isEnabled = true
         }
     }
 
@@ -998,9 +978,6 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
         binding.pbConnect.isVisible = true
         startConnectPulse()
         updateProcessState(getString(R.string.neon_connecting))
-        binding.ringConnected.isVisible = false
-        binding.pbConnectingRing.isVisible = true
-        binding.ivPowerIcon.setColorFilter(ContextCompat.getColor(this, R.color.neon_circle_glow_blue))
         connectTimeoutJob?.cancel()
         connectTimeoutJob = lifecycleScope.launch {
             delay(15_000)
@@ -1008,9 +985,6 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
                 pendingConnectAttempt = false
                 binding.pbConnect.isVisible = false
                 stopConnectPulse()
-                binding.pbConnectingRing.isVisible = false
-                binding.ringConnected.isVisible = false
-                binding.ivPowerIcon.setColorFilter(ColorStateList.valueOf(ContextCompat.getColor(this, R.color.neon_import_icon)).defaultColor)
                 updateProcessState(getString(R.string.neon_connect_failed))
             }
         }
@@ -1582,45 +1556,21 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
         stopLiveStatsLoop()
         binding.layoutLiveStats.isVisible = true
         binding.tvLiveIp.text = "Checking..."
-        val dnsSetting = MmkvManager.decodeSettingsString(AppConfig.PREF_VPN_DNS) ?: AppConfig.DNS_VPN
-        binding.tvLiveDns.text = if (dnsSetting.isNotBlank()) dnsSetting else "System (${AppConfig.DNS_VPN})"
+        binding.tvLiveDns.text = MmkvManager.decodeSettingsString(AppConfig.PREF_VPN_DNS) ?: "System"
         
         var lastQueryTime = System.currentTimeMillis()
-        var lastTotalUp = 0L
-        var lastTotalDown = 0L
-        var consecutiveZeroReadings = 0
         
-        // Fetch Live IP in background — use the HTTP proxy so it goes through VPN
+        // Fetch Live IP in background once
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val httpPort = SettingsManager.getHttpPort()
-                Log.i(AppConfig.TAG, "Fetching Live IP via proxy port $httpPort")
-                val ip = HttpUtil.getUrlContent("https://api.ipify.org/", 15000, httpPort)
+                val ip = HttpUtil.getUrlContent("https://api.ipify.org/", 15000)
                 withContext(Dispatchers.Main) {
-                    if (!ip.isNullOrBlank()) {
-                        binding.tvLiveIp.text = ip.trim()
-                        binding.tvLiveIp.setTextColor(android.graphics.Color.parseColor("#00FF00"))
-                        Log.i(AppConfig.TAG, "Live IP: $ip")
-                        updateProcessState("متصل • Live IP: ${ip.trim()}")
-                    } else {
-                        // Fallback: try without proxy (already on IO dispatcher)
-                        val ip2 = HttpUtil.getUrlContent("https://api.ip.sb/geoip", 15000, 0)
-                        withContext(Dispatchers.Main) {
-                                if (!ip2.isNullOrBlank()) {
-                                    binding.tvLiveIp.text = ip2.trim().take(100)
-                                    binding.tvLiveIp.setTextColor(android.graphics.Color.parseColor("#FFA500"))
-                                Log.w(AppConfig.TAG, "Live IP (fallback): $ip2")
-                            } else {
-                                binding.tvLiveIp.text = "Unknown"
-                                binding.tvLiveIp.setTextColor(android.graphics.Color.parseColor("#FF4444"))
-                            }
-                        }
+                    if (!ip.isNullOrBlank()) binding.tvLiveIp.text = ip
+                    else binding.tvLiveIp.text = "Unknown"
                 }
             } catch (e: Exception) {
-                Log.e(AppConfig.TAG, "Live IP fetch failed", e)
                 withContext(Dispatchers.Main) {
-                    binding.tvLiveIp.text = "Error (check connection)"
-                    binding.tvLiveIp.setTextColor(android.graphics.Color.parseColor("#FF4444"))
+                    binding.tvLiveIp.text = "Error"
                 }
             }
         }
@@ -1628,46 +1578,35 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
         liveStatsJob = lifecycleScope.launch(Dispatchers.IO) {
             while (isActive && mainViewModel.isRunning.value == true) {
                 val queryTime = System.currentTimeMillis()
-                val elapsedSeconds = ((queryTime - lastQueryTime) / 1000.0).coerceAtLeast(1.0)
+                val sinceLastQueryInSeconds = (queryTime - lastQueryTime) / 1000.0
                 
-                var totalUpNow = 0L
-                var totalDownNow = 0L
+                var totalUp = 0L
+                var totalDown = 0L
                 
-                // Query all relevant outbound tags to capture all traffic
+                val selectedIndex = mainViewModel.selectedList.firstOrNull() ?: 0
+                val currentGuid = mainViewModel.serverList
+                    .withIndex()
+                    .firstOrNull { it.index == selectedIndex }
+                    ?.value
+                val currentConfig = currentGuid?.let { guid -> mainViewModel.serversCache.firstOrNull { it.guid == guid } }
+
+                val outboundTags = mutableListOf<String>()
+                outboundTags.add(AppConfig.TAG_PROXY)
+                // In generic mode, it checks all tags. Let's just sum all:
                 val allTags = listOf(AppConfig.TAG_PROXY, AppConfig.TAG_DIRECT)
                 allTags.forEach {
                     val up = V2RayServiceManager.queryStats(it, AppConfig.UPLINK)
                     val down = V2RayServiceManager.queryStats(it, AppConfig.DOWNLINK)
-                    totalUpNow += up
-                    totalDownNow += down
+                    totalUp += up
+                    totalDown += down
                 }
 
-                // Calculate speed based on difference from last reading
-                // This handles cumulative counters more accurately
-                val diffUp = (totalUpNow - lastTotalUp).coerceAtLeast(0)
-                val diffDown = (totalDownNow - lastTotalDown).coerceAtLeast(0)
+                val speedUp = (totalUp / sinceLastQueryInSeconds).toLong()
+                val speedDown = (totalDown / sinceLastQueryInSeconds).toLong()
                 
-                val speedUp = (diffUp / elapsedSeconds).toLong()
-                val speedDown = (diffDown / elapsedSeconds).toLong()
-                
-                lastTotalUp = totalUpNow
-                lastTotalDown = totalDownNow
-                
-                if (diffUp == 0L && diffDown == 0L) {
-                    consecutiveZeroReadings++
-                } else {
-                    consecutiveZeroReadings = 0
-                }
-
                 withContext(Dispatchers.Main) {
                     binding.tvUlSpeed.text = speedUp.toLocalTrafficString() + "/s"
                     binding.tvDlSpeed.text = speedDown.toLocalTrafficString() + "/s"
-                    
-                    // If 10+ seconds of zero traffic while "connected", warn the user
-                    if (consecutiveZeroReadings >= 10 && mainViewModel.isRunning.value == true) {
-                        binding.tvLiveIp.text = "No traffic — check tunnel"
-                        binding.tvLiveIp.setTextColor(android.graphics.Color.parseColor("#FFA500"))
-                    }
                 }
 
                 lastQueryTime = queryTime
