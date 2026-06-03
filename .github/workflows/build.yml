@@ -378,6 +378,32 @@ jobs:
           if [ ! -z "$SCRIPT_PATH" ]; then
             SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
             echo "Running tun2socks compilations inside $SCRIPT_DIR"
+            
+            # Ensure submodules exist before compilation
+            echo "=== Cloning required submodules ==="
+            if [ ! -d "$SCRIPT_DIR/badvpn/lwip" ] || [ ! -f "$SCRIPT_DIR/badvpn/CMakeLists.txt" ]; then
+              echo "Cloning badvpn..."
+              rm -rf "$SCRIPT_DIR/badvpn"
+              git clone --depth 1 https://github.com/XTLS/badvpn "$SCRIPT_DIR/badvpn"
+            else
+              echo "badvpn already exists"
+            fi
+            if [ ! -d "$SCRIPT_DIR/libancillary" ] || [ ! -f "$SCRIPT_DIR/libancillary/ancillary.h" ]; then
+              echo "Cloning libancillary..."
+              rm -rf "$SCRIPT_DIR/libancillary"
+              git clone --depth 1 https://github.com/shadowsocks/libancillary "$SCRIPT_DIR/libancillary"
+            else
+              echo "libancillary already exists"
+            fi
+            if [ ! -d "$SCRIPT_DIR/hev-socks5-tunnel" ] || [ ! -f "$SCRIPT_DIR/hev-socks5-tunnel/Android.mk" ]; then
+              echo "Cloning hev-socks5-tunnel (recursive)..."
+              rm -rf "$SCRIPT_DIR/hev-socks5-tunnel"
+              git clone --depth 1 --recursive https://github.com/heiher/hev-socks5-tunnel "$SCRIPT_DIR/hev-socks5-tunnel"
+            else
+              echo "hev-socks5-tunnel already exists"
+            fi
+            echo "=== Submodules ready ==="
+            
             pushd "$SCRIPT_DIR"
             chmod +x compile-tun2socks.sh compile-hevtun.sh
             sed -i 's/\r$//' compile-tun2socks.sh
