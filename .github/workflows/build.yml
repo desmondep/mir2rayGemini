@@ -1,0 +1,249 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Custom Tag for release (e.g. v1.10.32-r3)'
+        required: false
+        type: string
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+      with:
+        submodules: 'recursive'
+        fetch-depth: '0'
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3.2.0
+      with:
+        log-accepted-android-sdk-licenses: false
+        cmdline-tools-version: '12266719'
+        packages: 'platforms;android-35 build-tools;35.0.0 platform-tools'
+
+    - name: Install NDK
+      run: |
+        echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
+          --channel=0 \
+          --install "ndk;28.2.13676358"
+        echo "NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> $GITHUB_ENV
+        sed -i '10i\
+        \
+            ndkVersion = "28.2.13676358"' ${{ github.workspace }}/imported/V2rayNG/app/build.gradle.kts
+
+    - name: Restore cached libtun2socks
+      id: cache-libtun2socks-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ github.workspace }}/imported/libs
+        key: libtun2socks-${{ runner.os }}-${{ env.NDK_HOME }}-${{ hashFiles('imported/compile-tun2socks.sh') }}--${{ hashFiles('imported/compile-hevtun.sh') }}
+
+    - name: Build libtun2socks
+      if: steps.cache-libtun2socks-restore.outputs.cache-hit != 'true'
+      working-directory: imported
+      run: |
+        bash compile-tun2socks.sh && bash compile-hevtun.sh
+    
+    - name: Save libtun2socks
+      if: steps.cache-libtun2socks-restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ github.workspace }}/imported/libs
+        key: libtun2socks-${{ runner.os }}-${{ env.NDK_HOME }}-${{ hashFiles('imported/compile-tun2socks.sh') }}--${{ hashFiles('imported/compile-hevtun.sh') }}
+
+    - name: Copy libtun2socks
+      run: |
+        cp -r ${{ github.workspace }}/imported/libs ${{ github.workspace }}/imported/V2rayNG/app
+
+    - name: Fetch AndroidLibXrayLite tag
+      working-directory: imported
+      run: |
+        pushd AndroidLibXrayLite
+        CURRENT_TAG=$(git describe --tags --abbrev=0)
+        echo "Current tag in this repo: $CURRENT_TAG"
+        echo "CURRENT_TAG=$CURRENT_TAG" >> $GITHUB_ENV
+        popd
+
+    - name: Download libv2ray
+      uses: robinraju/release-downloader@v1.12
+      with:
+        repository: '2dust/AndroidLibXrayLite'
+        tag: ${{ env.CURRENT_TAG }}
+        fileName: 'libv2ray.aar'
+        out-file-path: imported/V2rayNG/app/libs/
+
+    - name: Restore cached libhysteria2
+      id: cache-libhysteria2-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ github.workspace }}/imported/hysteria/libs
+        key: libhysteria2-${{ runner.os }}-${{ env.NDK_HOME }}-${{ hashFiles('imported/libhysteria2.sh') }}
+
+    - name: Setup Golang
+      if: steps.cache-libhysteria2-restore.outputs.cache-hit != 'true'
+      uses: actions/setup-go@v5.4.0
+      with:
+        go-version-file: 'imported/AndroidLibXrayLite/go.mod'
+        cache: false
+
+    - name: Build libhysteria2
+      if: steps.cache-libhysteria2-restore.outputs.cache-hit != 'true'
+      working-directory: imported
+      run: |
+        bash libhysteria2.sh
+
+    - name: Save libhysteria2
+      if: steps.cache-libhysteria2-restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ github.workspace }}/imported/hysteria/libs
+        key: libhysteria2-${{ runner.os }}-${{ env.NDK_HOME }}-${{ hashFiles('imported/libhysteria2.sh') }}
+
+    - name: Copy libhysteria2
+      run: |
+        cp -r ${{ github.workspace }}/imported/hysteria/libs ${{ github.workspace }}/imported/V2rayNG/app
+
+    - name: Setup Java
+      uses: actions/setup-java@v4.7.0
+      with:
+        distribution: 'temurin'
+        java-version: '21'
+
+    - name: Check Keystore Availability
+      run: |
+        if [ ! -z "${{ secrets.APP_KEYSTORE_BASE64 }}" ]; then
+          echo "HAS_KEYSTORE=true" >> $GITHUB_ENV
+        else
+          echo "HAS_KEYSTORE=false" >> $GITHUB_ENV
+        fi
+
+    - name: Decode Keystore
+      if: env.HAS_KEYSTORE == 'true'
+      uses: timheuer/base64-to-file@v1.2.4
+      id: android_keystore
+      with:
+        fileName: "android_keystore.jks"
+        encodedString: ${{ secrets.APP_KEYSTORE_BASE64 }}
+
+    - name: Build APK
+      run: |
+        cd ${{ github.workspace }}/imported/V2rayNG
+        echo "sdk.dir=${ANDROID_HOME}" > local.properties
+        chmod 755 gradlew
+        if [ "${{ env.HAS_KEYSTORE }}" = "true" ]; then
+          echo "Building signed Release APKs..."
+          ./gradlew licenseFdroidReleaseReport
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=${{ steps.android_keystore.outputs.filePath }} \
+            -Pandroid.injected.signing.store.password=${{ secrets.APP_KEYSTORE_PASSWORD }} \
+            -Pandroid.injected.signing.key.alias=${{ secrets.APP_KEYSTORE_ALIAS }} \
+            -Pandroid.injected.signing.key.password=${{ secrets.APP_KEY_PASSWORD }}
+        else
+          echo "No signing keystore provided. Building Debug APKs..."
+          ./gradlew assembleFdroidDebug assembleDebug
+        fi
+
+    - name: Prepare Tag and Output Info
+      id: prep_tag
+      run: |
+        VERSION_NAME=$(python3 -c "import re; content=open('imported/V2rayNG/app/build.gradle.kts').read(); print(re.search(r'versionName\s*=\s*\"([^\"]+)\"', content).group(1))")
+        echo "Version extracted: $VERSION_NAME"
+        if [ ! -z "${{ github.event.inputs.release_tag }}" ]; then
+          TAG="${{ github.event.inputs.release_tag }}"
+        else
+          TAG="v${VERSION_NAME}-r${{ github.run_number }}"
+        fi
+        echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
+
+    - name: Collect Built APKs
+      run: |
+        mkdir -p ${{ github.workspace }}/apks
+        find ${{ github.workspace }}/imported/V2rayNG/app/build/outputs/apk/ -type f -name "*.apk" | while read -r apk; do
+          if [[ "$apk" != *"-unaligned"* ]]; then
+            cp "$apk" ${{ github.workspace }}/apks/
+          fi
+        done
+        echo "Collected apks:"
+        ls -la ${{ github.workspace }}/apks/
+
+    - name: Update README with New Version and Links
+      shell: python
+      run: |
+        import re
+        import os
+
+        repo = os.environ.get("GITHUB_REPOSITORY", "desmondep/Mir2Ray")
+        tag = os.environ.get("RELEASE_TAG", "v1.10.32-r3")
+        version_num = tag.lstrip('v').split('-')[0]
+
+        files_to_update = ["README.md"]
+        if os.path.exists("imported/README.md"):
+            files_to_update.append("imported/README.md")
+
+        for filepath in files_to_update:
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            abis = ["universal", "arm64-v8a", "armeabi-v7a", "x86_64", "x86"]
+            for abi in abis:
+                pattern = r"https://github\.com/[^/]+/[^/]+/releases/(?:latest/download|download/[^/]+)/v2rayNG_[0-9.]+-fdroid_" + abi + r"\.apk"
+                new_url = f"https://github.com/{repo}/releases/download/{tag}/v2rayNG_{version_num}-fdroid_{abi}.apk"
+                content = re.sub(pattern, new_url, content)
+
+            # Update absolute repo/release URLs
+            content = re.sub(r"https://img\.shields\.io/github/downloads/[^/]+/[^/]+/total", f"https://img.shields.io/github/downloads/{repo}/total", content)
+            content = re.sub(r"https://github\.com/[^/]+/[^/]+/releases", f"https://github.com/{repo}/releases", content)
+
+            # Update current version section header
+            content = re.sub(r"تغییرات نسخه فعلی \([^\)]+\)", f"تغییرات نسخه فعلی ({tag})", content)
+            
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(content)
+                
+        print("Updated target READMEs successfully!")
+
+    - name: Commit and Push README Changes
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add README.md || true
+        git add imported/README.md || true
+        git diff-index --quiet HEAD || git commit -m "docs: update README.md for version ${{ env.RELEASE_TAG }} [skip ci]"
+        git push origin master || echo "No changes or failed to push"
+
+    - name: Prepare Release Notes
+      run: |
+        cat << 'EOF' > release_body.md
+        # Mir2Ray ${{ env.RELEASE_TAG }}
+        
+        ## تغییرات این نسخه / Changelog:
+        EOF
+        if [ -f "imported/release_notes_v1.10.32.md" ]; then
+          cat imported/release_notes_v1.10.32.md >> release_body.md
+        else
+          echo "Automated compilation of built APKs for version ${{ env.RELEASE_TAG }}." >> release_body.md
+        fi
+
+    - name: Upload to release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ env.RELEASE_TAG }}
+        name: Mir2Ray ${{ env.RELEASE_TAG }}
+        body_path: ${{ github.workspace }}/release_body.md
+        files: |
+          ${{ github.workspace }}/apks/*.apk
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
