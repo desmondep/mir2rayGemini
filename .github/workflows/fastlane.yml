@@ -12,6 +12,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Diagnostic - Inspect Checked-Out Files and Git Tracker
+        run: |
+          echo "=== CLI Tools & Current Directory ==="
+          pwd
+          ls -la
+          echo "=== Git Tracked Files ==="
+          git ls-files
+          echo "=== Check if imported folder has contents ==="
+          if [ -d "imported" ]; then
+            echo "imported/ directory exists"
+            ls -la imported/
+          else
+            echo "imported/ directory does not exist!"
+          fi
+          echo "=== Recursive Find (Depth 3) ==="
+          find . -maxdepth 3 -not -path '*/.*'
       - name: Locate and Prepare Fastlane Dir
         run: |
           if [ -d "imported/fastlane" ]; then

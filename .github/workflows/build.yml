@@ -25,6 +25,23 @@ jobs:
         submodules: 'recursive'
         fetch-depth: '0'
 
+    - name: Diagnostic - Inspect Checked-Out Files and Git Tracker
+      run: |
+        echo "=== CLI Tools & Current Directory ==="
+        pwd
+        ls -la
+        echo "=== Git Tracked Files ==="
+        git ls-files
+        echo "=== Check if imported folder has contents ==="
+        if [ -d "imported" ]; then
+          echo "imported/ directory exists"
+          ls -la imported/
+        else
+          echo "imported/ directory does not exist!"
+        fi
+        echo "=== Recursive Find (Depth 3) ==="
+        find . -maxdepth 3 -not -path '*/.*'
+
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3.2.0
       with:
